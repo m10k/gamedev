@@ -169,6 +169,17 @@ gtfo:
 	return(ret_val);
 }
 
+static void debug(void)
+{
+	struct object *obj;
+
+	for(obj = _lvl->objects; obj; obj = obj->next) {
+		fprintf(stderr, "obj(%d, %d, %d)\n", obj->x, obj->y, obj->type);
+	}
+
+	return;
+}
+
 static void input(void)
 {
 	SDL_Event ev;
@@ -202,6 +213,10 @@ static void input(void)
 
 			case SDLK_d:
 				dx = 1;
+				break;
+
+			case SDLK_e:
+				debug();
 				break;
 
 			default:
@@ -297,7 +312,7 @@ static void process(void)
 
 			/* passable but occupied means the nimotsu is on the destination */
 			if(d) {
-				d->type = OBJ_MARU;
+				ni->type = OBJ_MARU;
 			}
 		}
 	} else {
