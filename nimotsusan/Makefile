@@ -1,4 +1,4 @@
-OBJECTS = main.o
+OBJECTS = main.o level.o
 OUTPUT = nimotsusan
 CFLAGS += $(shell sdl2-config --cflags)
 LIBS += $(shell sdl2-config --libs) -lSDL2_ttf

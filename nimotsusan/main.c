@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <errno.h>
 #include <assert.h>
+#include "level.h"
 
 #define WIDTH  8
 #define HEIGHT 8
@@ -10,23 +11,7 @@
 #define FONT_SIZE 32
 
 static int stop = 0;
-static char board[WIDTH][HEIGHT];
-
-typedef enum obj_type {
-	OBJ_NONE = 0,
-	OBJ_HAKO,
-	OBJ_KUCHI,
-	OBJ_HITO,
-	OBJ_MARU,
-	OBJ_KABE,
-	OBJ_UNKNOWN
-} obj_type;
-
-struct object {
-	int x;
-	int y;
-	obj_type type;
-};
+static struct level *_lvl = NULL;
 
 static const char *obj_text[] = {
 	"　",
@@ -38,7 +23,6 @@ static const char *obj_text[] = {
 	"無"
 };
 
-static struct object obj[(NOBJS * 2) + 1];
 static int dx;
 static int dy;
 
@@ -170,23 +154,12 @@ static int init(void)
 		goto gtfo;
 	}
 
-	/* TODO: load graphics */
+	ret_val = readlvl(&_lvl, "foo.lvl");
 
-	obj[0].x = 1;
-	obj[0].y = 1;
-	obj[0].type = OBJ_KUCHI;
-	obj[1].x = 6;
-	obj[1].y = 1;
-	obj[1].type = OBJ_KUCHI;
-	obj[2].x = 3;
-	obj[2].y = 3;
-	obj[2].type = OBJ_HAKO;
-	obj[3].x = 3;
-	obj[3].y = 4;
-	obj[3].type = OBJ_HAKO;
-	obj[4].x = 4;
-	obj[4].y = 4;
-	obj[4].type = OBJ_HITO;
+	if(ret_val < 0) {
+		fprintf(stderr, "readlvl: %s\n", strerror(-ret_val));
+		goto gtfo;
+	}
 
 gtfo:
 	if(ret_val < 0) {
@@ -246,45 +219,55 @@ static void input(void)
 	return;
 }
 
+struct object* object_at(int x, int y)
+{
+	struct object *cur;
+
+	for(cur = _lvl->objects; cur; cur = cur->next) {
+		if(cur->x == x && cur->y == y) {
+			return(cur);
+		}
+	}
+
+	return(NULL);
+}
+
 static int unpassable(int x, int y)
 {
-	int z;
+	struct object *o;
 
-	if(!x || !y || x == (WIDTH - 1) || y == (HEIGHT - 1)) {
+	if(x < 0 || y < 0 || x >= _lvl->width || y >= _lvl->height) {
 		return(1);
 	}
 
-	for(z = 0; z < NOBJS * 2 + 1; z++) {
-		if(obj[z].x == x &&
-		   obj[z].y == y &&
-		   obj[z].type != '.') {
-			return(1);
-		}
+	o = object_at(x, y);
+
+	if(!o || o->type == OBJ_KUCHI) {
+		return(0);
 	}
 
-	return(0);
+	return(1);
 }
 
-static int occupied_by(int x, int y)
+static void move_object(struct object *o, int x, int y)
 {
-	int z;
-
-	for(z = 0; z < NOBJS * 2 + 1; z++) {
-		if(obj[z].x == x &&
-		   obj[z].y == y) {
-			return(z);
-		}
-	}
-
-	return(-1);
-}
-
-static void move_object(int o, int x, int y)
-{
-	obj[o].x = x;
-	obj[o].y = y;
+	o->x = x;
+	o->y = y;
 
 	return;
+}
+
+static int done(void)
+{
+	struct object *cur;
+
+	for(cur = _lvl->objects; cur; cur = cur->next) {
+		if(cur->type == OBJ_HAKO) {
+			return(0);
+		}
+	}
+
+	return(1);
 }
 
 static void process(void)
@@ -292,42 +275,36 @@ static void process(void)
 	int px, py;
 	int rem;
 
-	px = obj[4].x + dx;
-	py = obj[4].y + dy;
+	px = _lvl->player->x + dx;
+	py = _lvl->player->y + dy;
 
 	if(unpassable(px, py)) {
 		int nx, ny;
-		int ni;
+		struct object *ni;
 
 		nx = px + dx;
 		ny = py + dy;
-		ni = occupied_by(px, py);
+		ni = object_at(px, py);
 
 		/* check if occupator is not a wall and if it can be moved */
-		if(ni >= 0 && !unpassable(nx, ny)) {
-			int d;
+		if(ni->type != OBJ_KABE && !unpassable(nx, ny)) {
+			struct object *d;
 
-			d = occupied_by(nx, ny);
+			d = object_at(nx, ny);
 
 			move_object(ni, nx, ny);
-			move_object(4, px, py);
+			move_object(_lvl->player, px, py);
 
 			/* passable but occupied means the nimotsu is on the destination */
-			if(d >= 0) {
-				obj[ni].type = OBJ_MARU;
+			if(d) {
+				d->type = OBJ_MARU;
 			}
 		}
 	} else {
-		move_object(4, px, py);
+		move_object(_lvl->player, px, py);
 	}
 
-	for(px = 0, rem = 0; px < NOBJS * 2 + 1; px++) {
-		if(obj[px].type == OBJ_HAKO) {
-			rem++;
-		}
-	}
-
-	if(!rem) {
+	if(done()) {
 		stop = 1;
 	}
 
@@ -355,23 +332,14 @@ static void draw_at(SDL_Surface *dst, int x, int y, obj_type type)
 
 static void output(void)
 {
+	struct object *obj;
 	int x, y;
 
 	/* fill with background color */
 	SDL_FillRect(_surface, NULL, SDL_MapRGB(_surface->format, 0xff, 0xff, 0xff));
 
-	/* draw walls */
-	for(y = 0; y < HEIGHT; y++) {
-		for(x = 0; x < WIDTH; x++) {
-			if(!x || !y || x == (WIDTH - 1) || y == (HEIGHT - 1)) {
-				draw_at(_surface, x, y, OBJ_KABE);
-			}
-		}
-	}
-
-	/* draw objects */
-	for(x = 0; x < (NOBJS * 2 + 1); x++) {
-		draw_at(_surface, obj[x].x, obj[x].y, obj[x].type);
+	for(obj = _lvl->objects; obj; obj = obj->next) {
+		draw_at(_surface, obj->x, obj->y, obj->type);
 	}
 
 	SDL_UpdateWindowSurface(_window);
