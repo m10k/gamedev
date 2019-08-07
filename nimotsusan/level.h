@@ -16,6 +16,9 @@ struct object {
 	int x;
 	int y;
 	obj_type type;
+
+	int dx;
+	int dy;
 };
 
 struct level {

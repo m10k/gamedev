@@ -266,8 +266,16 @@ static int unpassable(int x, int y)
 
 static void move_object(struct object *o, int x, int y)
 {
+	int dx;
+	int dy;
+
+	dx = (o->x - x) * 32;
+	dy = (o->y - y) * 32;
+
 	o->x = x;
 	o->y = y;
+	o->dx = dx;
+	o->dy = dy;
 
 	return;
 }
@@ -287,11 +295,29 @@ static int done(void)
 
 static void process(void)
 {
+	struct object *cur;
 	int px, py;
 	int rem;
+	static int x = 0;
 
 	px = _lvl->player->x + dx;
 	py = _lvl->player->y + dy;
+
+	if(x++ % 10 == 0) {
+		for(cur = _lvl->objects; cur; cur = cur->next) {
+			if(cur->dx > 0) {
+				cur->dx--;
+			} else if(cur->dx < 0) {
+				cur->dx++;
+			}
+
+			if(cur->dy > 0) {
+				cur->dy--;
+			} else if(cur->dy < 0) {
+				cur->dy++;
+			}
+		}
+	}
 
 	if(unpassable(px, py)) {
 		int nx, ny;
@@ -334,8 +360,8 @@ static void draw_at(SDL_Surface *dst, int x, int y, obj_type type)
 	src = _sprites[type];
 
 	if(src) {
-		drect.x = x * 32;
-		drect.y = y * 32;
+		drect.x = x;
+		drect.y = y;
 		drect.w = 32;
 		drect.h = 32;
 
@@ -354,7 +380,7 @@ static void output(void)
 	SDL_FillRect(_surface, NULL, SDL_MapRGB(_surface->format, 0xff, 0xff, 0xff));
 
 	for(obj = _lvl->objects; obj; obj = obj->next) {
-		draw_at(_surface, obj->x, obj->y, obj->type);
+		draw_at(_surface, (obj->x * 32) + obj->dx, (obj->y * 32) + obj->dy, obj->type);
 	}
 
 	SDL_UpdateWindowSurface(_window);
