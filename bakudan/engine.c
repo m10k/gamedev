@@ -164,6 +164,11 @@ static void _input(void)
 
 static void _process(void)
 {
+	if(_state != GAME_STATE_SP &&
+	   _state != GAME_STATE_MP) {
+		return;
+	}
+
 	game_logic();
 	game_animate();
 
@@ -236,4 +241,10 @@ int engine_quit(void)
 	/* perform remaining cleanup */
 
 	return(ret_val);
+}
+
+void engine_set_state(game_state state)
+{
+	_state = state;
+	return;
 }

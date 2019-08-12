@@ -57,7 +57,13 @@ static const char *_env_gfx[SPRITE_NONE] = {
 	"gfx/wall.png",
 	"gfx/pillar.png",
 	"gfx/boulder.png",
-	"gfx/bomb.png"
+	"gfx/bomb.png",
+	"gfx/bag.png",
+	"gfx/life.png",
+	"gfx/luck.png",
+	"gfx/potion.png",
+	"gfx/power.png",
+	"gfx/time.png"
 };
 
 static const char *_env_caption[SPRITE_NONE] = {

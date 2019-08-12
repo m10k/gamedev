@@ -3,12 +3,17 @@
 #include <errno.h>
 #include <string.h>
 #include <stdio.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <time.h>
 #include "game.h"
+#include "engine.h"
 
 static player *players = NULL;
 static player *cpu = NULL;
 static int nplayers = 0;
 static object *objects[WIDTH][HEIGHT];
+static int alive_players;
 
 #define IS_WALL(x,y)    (x == 0 || y == 0 || x == (WIDTH - 1) || y == (HEIGHT - 1))
 #define IS_PILLAR(x,y)  (x > 0 && y > 0 && (x % 2 == 0) && (y % 2 == 0))
@@ -49,6 +54,10 @@ static object* make_object(object_type type, int x, int y)
 	case OBJECT_TYPE_BOMB:
 		s = sizeof(bomb);
 		break;
+
+	case OBJECT_TYPE_ITEM:
+		s = sizeof(item);
+		break;
 	}
 
 	o = malloc(s);
@@ -61,17 +70,80 @@ static object* make_object(object_type type, int x, int y)
 		o->y = y;
 
 		switch(type) {
+		case OBJECT_TYPE_ITEM:
 		case OBJECT_TYPE_BOMB:
 			o->passable = 1;
 			break;
 
 		case OBJECT_TYPE_BOULDER:
-			((boulder*)o)->strength = 1000;
+			((boulder*)o)->strength = BOULDER_DEFAULT_STRENGTH;
 			break;
 		}
 	}
 
 	return(o);
+}
+
+static void drop_item(const int x, const int y)
+{
+	item_type type;
+	item *i;
+
+	type = game_ask_universe2(0, ITEM_TYPE_NUM - 1);
+
+	i = (item*)make_object(OBJECT_TYPE_ITEM, x, y);
+
+	if(i) {
+		i->type = type;
+
+		switch(type) {
+		case ITEM_TYPE_BAG:
+			i->bombs = 1;
+			break;
+
+		case ITEM_TYPE_LIFE:
+			i->lifes = 1;
+			break;
+
+		case ITEM_TYPE_LUCK:
+			i->probability = game_ask_universe2(-10, 10);
+			break;
+
+		case ITEM_TYPE_POTION:
+			i->health = game_ask_universe2(10, 100);
+			break;
+
+		case ITEM_TYPE_TIME:
+			i->health = game_ask_universe2(-3, 3);
+			break;
+
+		case ITEM_TYPE_POWER:
+			i->health = game_ask_universe2(-500, 500);
+			break;
+
+		default:
+			assert(0);
+			break;
+		}
+
+		objects[x][y] = (object*)i;
+	}
+
+	return;
+}
+
+void drop_life(const int x, const int y)
+{
+	item *i;
+
+	i = (item*)make_object(OBJECT_TYPE_ITEM, PLX(x), PLY(x));
+
+	if(i) {
+		i->lifes = 1;
+		objects[x][y] = (object*)i;
+	}
+
+	return;
 }
 
 int game_init(int humans, int cpus)
@@ -92,6 +164,7 @@ int game_init(int humans, int cpus)
 
 	memset(players, 0, sizeof(*players) * n);
 	nplayers = n;
+	alive_players = n;
 	cpu = players + humans;
 
 	if(n == 2) {
@@ -121,9 +194,14 @@ int game_init(int humans, int cpus)
 		players[i].num = i;
 		players[i].dx = 0;
 		players[i].dy = 0;
+		players[i].alive = 1;
+
 		players[i].bomb_timeout = PLAYER_DEFAULT_TIMEOUT;
 		players[i].bomb_strength = PLAYER_DEFAULT_STRENGTH;
 		players[i].health = PLAYER_DEFAULT_HEALTH;
+		players[i].lifes = PLAYER_DEFAULT_LIFES;
+		players[i].probability = PLAYER_DEFAULT_PROBABILITY;
+		players[i].bombs = PLAYER_DEFAULT_BOMBS;
 	}
 
 	memset(&objects, 0, sizeof(objects));
@@ -229,16 +307,207 @@ void game_player_action(const int p)
 	object *o;
 	int px, py;
 
-	px = PLX(p);
-	py = PLY(p);
+	if(players[p].bombs > 0) {
+		px = PLX(p);
+		py = PLY(p);
 
-	o = make_object(OBJECT_TYPE_BOMB, px, py);
+		o = make_object(OBJECT_TYPE_BOMB, px, py);
 
-    if(o) {
-		((bomb*)o)->strength = players[p].bomb_strength;
-		((bomb*)o)->timeout = players[p].bomb_timeout * FPS;
+		if(o) {
+			((bomb*)o)->strength = players[p].bomb_strength;
+			((bomb*)o)->timeout = players[p].bomb_timeout * FPS;
+			((bomb*)o)->owner = p;
 
-		objects[px][py] = o;
+			objects[px][py] = o;
+		}
+
+		players[p].bombs--;
+	}
+
+	return;
+}
+
+int bomb_strength_at(bomb *b, const int x, const int y)
+{
+	int dx, dy;
+	int dist;
+	int dmg;
+
+	dx = obj_x(b) - x;
+	dy = obj_y(b) - y;
+    dist = 1000;
+
+	if(dx == 0) {
+		dist = dy < 0 ? -dy : dy;
+	} else if(dy == 0) {
+		dist = dx < 0 ? -dx : dx;
+	}
+
+	dmg = b->strength - (dist * BOMB_GRADIENT);
+
+	if(dmg < 0) {
+		dmg = 0;
+	}
+
+	return(dmg);
+}
+
+void player_damage(const int p, const int dmg, bomb *b)
+{
+	if(players[p].health > 0) {
+		printf("Dealing %d dmg to player %d (newhp: %d)\n", dmg, p, players[p].health - dmg);
+		players[p].health -= dmg;
+		players[p].attacker = b->owner;
+	}
+
+	return;
+}
+
+void boulder_damage(object *o, const int dmg, bomb *b)
+{
+	boulder *bld = (boulder*)o;
+
+	if(bld->strength > 0) {
+		printf("Dealing %d dmg to boulder (%d, %d) (newstr: %d)\n", dmg, o->x, o->y,
+			   bld->strength - dmg);
+		bld->strength -= dmg;
+		bld->attacker = b->owner;
+	}
+
+	return;
+}
+
+void bomb_detonate(bomb *b)
+{
+	int tx, ty;
+	int i;
+
+	for(tx = obj_x(b) - 1, ty = obj_y(b);
+		tx > 0; tx--) {
+		object *o;
+		int dmg;
+
+		dmg = bomb_strength_at(b, tx, ty);
+
+		if(dmg <= 0) {
+			break;
+		}
+
+		for(i = 0; i < nplayers; i++) {
+			if(PLX(i) == tx && PLY(i) == ty) {
+				player_damage(i, dmg, b);
+			}
+		}
+
+		o = objects[tx][ty];
+
+		if(!o) {
+			continue;
+		}
+
+		if(o->type == OBJECT_TYPE_BOULDER) {
+			boulder_damage(o, dmg, b);
+		} else if(o->type == OBJECT_TYPE_WALL ||
+				  o->type == OBJECT_TYPE_PILLAR) {
+			/* stop detonation in this direction */
+			break;
+		}
+	}
+
+	for(tx = obj_x(b) + 1, ty = obj_y(b);
+		tx < WIDTH; tx++) {
+		object *o;
+		int dmg;
+
+		dmg = bomb_strength_at(b, tx, ty);
+
+		if(dmg <= 0) {
+			break;
+		}
+
+		for(i = 0; i < nplayers; i++) {
+			if(PLX(i) == tx && PLY(i) == ty) {
+				player_damage(i, dmg, b);
+			}
+		}
+
+		o = objects[tx][ty];
+
+		if(!o) {
+			continue;
+		}
+
+		if(o->type == OBJECT_TYPE_BOULDER) {
+			boulder_damage(o, dmg, b);
+		} else if(o->type == OBJECT_TYPE_WALL ||
+				  o->type == OBJECT_TYPE_PILLAR) {
+			/* stop detonation in this direction */
+			break;
+		}
+	}
+
+	for(tx = obj_x(b), ty = obj_y(b) - 1;
+		ty > 0; ty--) {
+		object *o;
+		int dmg;
+
+		dmg = bomb_strength_at(b, tx, ty);
+
+		if(dmg <= 0) {
+			break;
+		}
+
+		for(i = 0; i < nplayers; i++) {
+			if(PLX(i) == tx && PLY(i) == ty) {
+				player_damage(i, dmg, b);
+			}
+		}
+
+		o = objects[tx][ty];
+
+		if(!o) {
+			continue;
+		}
+
+		if(o->type == OBJECT_TYPE_BOULDER) {
+			boulder_damage(o, dmg, b);
+		} else if(o->type == OBJECT_TYPE_WALL ||
+				  o->type == OBJECT_TYPE_PILLAR) {
+			/* stop detonation in this direction */
+			break;
+		}
+	}
+
+	for(tx = obj_x(b), ty = obj_y(b) + 1;
+		ty < HEIGHT; ty++) {
+		object *o;
+		int dmg;
+
+		dmg = bomb_strength_at(b, tx, ty);
+
+		if(dmg <= 0) {
+			break;
+		}
+
+		for(i = 0; i < nplayers; i++) {
+			if(PLX(i) == tx && PLY(i) == ty) {
+				player_damage(i, dmg, b);
+			}
+		}
+
+		o = objects[tx][ty];
+
+		if(!o) {
+			continue;
+		}
+
+		if(o->type == OBJECT_TYPE_BOULDER) {
+			boulder_damage(o, dmg, b);
+		} else if(o->type == OBJECT_TYPE_WALL ||
+				  o->type == OBJECT_TYPE_PILLAR) {
+			/* stop detonation in this direction */
+			break;
+		}
 	}
 
 	return;
@@ -264,114 +533,7 @@ void game_logic(void)
 				tmp = --((bomb*)o)->timeout;
 
 				if(tmp <= 0) {
-					int dmg;
-					int tx, ty;
-					int i;
-
-					/* detonate bomb N */
-
-					for(dmg = ((bomb*)o)->strength, tx = x, ty = y;
-						dmg > 0 && ty >= 0;
-						ty--, dmg -= BOMB_GRADIENT) {
-						object *target;
-
-						target = objects[tx][ty];
-
-						/*
-						 * Check if there is a player a this position;
-						 * the extra step is necessary since players
-						 * are not in the objects map
-						 */
-						for(i = 0; i < nplayers; i++) {
-							if(PLX(i) == tx && PLY(i) == ty) {
-								players[i].health -= dmg;
-							}
-						}
-
-						if(!target) {
-							continue;
-						}
-
-						if(target->type == OBJECT_TYPE_BOULDER) {
-							((boulder*)target)->strength -= dmg;
-							break;
-						}
-					}
-
-					/* detonate bomb S */
-
-					for(dmg = ((bomb*)o)->strength, tx = x, ty = y;
-						dmg > 0 && ty < HEIGHT;
-						ty++, dmg -= BOMB_GRADIENT) {
-						object *target;
-
-						target = objects[tx][ty];
-
-						for(i = 0; i < nplayers; i++) {
-							if(PLX(i) == tx && PLY(i) == ty) {
-								players[i].health -= dmg;
-							}
-						}
-
-						if(!target) {
-							continue;
-						}
-
-						if(target->type == OBJECT_TYPE_BOULDER) {
-							((boulder*)target)->strength -= dmg;
-							break;
-						}
-					}
-
-					/* detonate bomb W */
-
-					for(dmg = ((bomb*)o)->strength, tx = x, ty = y;
-						dmg > 0 && tx >= 0;
-						tx--, dmg -= BOMB_GRADIENT) {
-						object *target;
-
-						target = objects[tx][ty];
-
-						for(i = 0; i < nplayers; i++) {
-							if(PLX(i) == tx && PLY(i) == ty) {
-								players[i].health -= dmg;
-							}
-						}
-
-						if(!target) {
-							continue;
-						}
-
-						if(target->type == OBJECT_TYPE_BOULDER) {
-							((boulder*)target)->strength -= dmg;
-							break;
-						}
-					}
-
-					/* detonate bomb E */
-
-					for(dmg = ((bomb*)o)->strength, tx = x, ty = y;
-						dmg > 0 && tx < WIDTH;
-						tx++, dmg -= BOMB_GRADIENT) {
-						object *target;
-
-						target = objects[tx][ty];
-
-						for(i = 0; i < nplayers; i++) {
-							if(PLX(i) == tx && PLY(i) == ty) {
-								players[i].health -= dmg;
-							}
-						}
-
-						if(!target) {
-							continue;
-						}
-
-						if(target->type == OBJECT_TYPE_BOULDER) {
-							((boulder*)target)->strength -= dmg;
-							break;
-						}
-					}
+					bomb_detonate((bomb*)o);
 				}
 			}
 		}
@@ -394,11 +556,22 @@ void game_logic(void)
 				if(((boulder*)o)->strength <= 0) {
 					free(o);
 					objects[x][y] = NULL;
+
+					/* decide whether to spawn an item */
+					if(game_ask_universe(players[((boulder*)o)->attacker].probability)) {
+						printf("Dropping item at (%d, %d)\n", x, y);
+						drop_item(x, y);
+					}
+
+					players[((boulder*)o)->attacker].boulders++;
 				}
 				break;
 
 			case OBJECT_TYPE_BOMB:
 				if(((bomb*)o)->timeout <= 0) {
+					/* allow owner to spawn another bomb */
+					players[((bomb*)o)->owner].bombs++;
+
 					free(o);
 					objects[x][y] = NULL;
 				}
@@ -411,16 +584,119 @@ void game_logic(void)
 	}
 
 	for(x = 0; x < nplayers; x++) {
-		if(players[x].health <= 0) {
-			if(players[x].lifes > 0) {
-				players[x].lifes--;
-				players[x].health = PLAYER_DEFAULT_HEALTH;
-				PLX(x) = players[x].spawn_x;
-				PLY(x) = players[x].spawn_y;
+		if(players[x].alive) {
+			if(players[x].health <= 0) {
+				printf("Player %d killed %d\n", players[x].attacker, x);
+
+				players[x].deaths++;
+				players[players[x].attacker].frags++;
+
+				if(players[x].attacker == x) {
+					players[x].suicides++;
+				}
+
+				/* drop a life? */
+				if(game_ask_universe(50)) {
+					drop_life(PLX(x), PLY(x));
+				}
+
+				if(players[x].lifes > 0) {
+					players[x].lifes--;
+					players[x].health = PLAYER_DEFAULT_HEALTH;
+					PLX(x) = players[x].spawn_x;
+					PLY(x) = players[x].spawn_y;
+				} else {
+					players[x].alive = 0;
+					alive_players--;
+				}
 			}
 		}
 	}
 
+	if(alive_players < 2) {
+		/* game over */
+		engine_set_state(GAME_STATE_SBOARD);
+	}
 
 	return;
+}
+
+int game_ask_universe(int prob)
+{
+	int fd;
+	unsigned char rnd;
+
+	fd = open("/dev/urandom", O_RDONLY);
+
+	if(fd >= 0) {
+		int err;
+
+		err = read(fd, &rnd, 1);
+
+		if(err > 0) {
+			rnd = rnd % 100;
+		}
+
+		close(fd);
+
+		if(err < 0) {
+			/* failed to read from /dev/urandom, so fall back to srand */
+			fd = -1;
+		}
+	}
+
+	if(fd < 0) {
+		static int _sr_initialized = 0;
+
+		printf("Falling back to srand()\n");
+
+		if(!_sr_initialized) {
+			srand(time(NULL));
+			_sr_initialized = 1;
+		}
+
+		rnd = rand() % 100;
+	}
+
+	printf("%d < %d\n", rnd, prob);
+
+	return(rnd < prob ? 1 : 0);
+}
+
+int game_ask_universe2(const int l, const int u)
+{
+	int fd;
+	int rnd;
+
+	fd = open("/dev/urandom", O_RDONLY);
+
+	if(fd >= 0) {
+		int err;
+
+		err = read(fd, &rnd, sizeof(rnd));
+
+		close(fd);
+
+		if(err < 0) {
+			/* failed to read from /dev/urandom, so fall back to srand */
+			fd = -1;
+		}
+	}
+
+	if(fd < 0) {
+		static int _sr_initialized = 0;
+
+		printf("Falling back to srand()\n");
+
+		if(!_sr_initialized) {
+			srand(time(NULL));
+			_sr_initialized = 1;
+		}
+
+		rnd = rand();
+	}
+
+	rnd = (rnd % (u - l)) + l;
+
+	return(rnd);
 }

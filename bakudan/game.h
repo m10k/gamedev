@@ -23,11 +23,16 @@
   Boulder: !wall && !pillar && !spawn
 */
 
-#define PLAYER_DEFAULT_STRENGTH 1000
-#define PLAYER_DEFAULT_TIMEOUT  5
-#define PLAYER_DEFAULT_HEALTH   500
+#define PLAYER_DEFAULT_STRENGTH    2000
+#define PLAYER_DEFAULT_TIMEOUT     5
+#define PLAYER_DEFAULT_HEALTH      500
+#define PLAYER_DEFAULT_LIFES       3
+#define PLAYER_DEFAULT_PROBABILITY 10
+#define PLAYER_DEFAULT_BOMBS       1
 
-#define BOMB_GRADIENT 500
+#define BOULDER_DEFAULT_STRENGTH   1000
+
+#define BOMB_GRADIENT              500
 
 enum {
 	COLOR_RED = 0,
@@ -81,16 +86,27 @@ typedef struct {
 	int dy;
 	int spawn_x;
 	int spawn_y;
+
 	int health;
 	int bomb_timeout;
 	int bomb_strength;
+	int bombs;
 	int lifes;
+	int probability;
+
+	int alive;
+	int attacker;
+	int frags;
+	int deaths;
+	int boulders;
+	int suicides;
 } player;
 
 typedef struct {
 	object __parent;
 
 	int strength;
+	int attacker;
 } boulder;
 
 typedef struct {
@@ -98,7 +114,30 @@ typedef struct {
 
 	int timeout;
 	int strength;
+	int owner;
 } bomb;
+
+typedef enum {
+	ITEM_TYPE_BAG = 0,
+	ITEM_TYPE_LIFE,
+	ITEM_TYPE_LUCK,
+	ITEM_TYPE_POTION,
+	ITEM_TYPE_POWER,
+	ITEM_TYPE_TIME,
+	ITEM_TYPE_NUM
+} item_type;
+
+typedef struct {
+	object __parent;
+	item_type type;
+
+	int bombs;
+	int lifes;
+	int probability;
+	int health;
+	int bomb_strength;
+	int bomb_timeout;
+} item;
 
 #define obj_x(o) (((object*)o)->x)
 #define obj_y(o) (((object*)o)->y)
@@ -109,6 +148,8 @@ player* game_player_num(const int);
 int game_num_players(void);
 void game_animate(void);
 void game_logic(void);
+int  game_ask_universe(const int);
+int  game_ask_universe2(const int, const int);
 
 void game_player_move(const int, const int, const int);
 void game_player_action(const int);
