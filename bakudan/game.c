@@ -8,12 +8,14 @@
 #include <time.h>
 #include "game.h"
 #include "engine.h"
+#include "anim.h"
 
 static player *players = NULL;
 static player *cpu = NULL;
 static int nplayers = 0;
 static object *objects[WIDTH][HEIGHT];
 static int alive_players;
+static anim_inst *anims;
 
 static const char *_item_names[] = {
 	"BAG",
@@ -189,6 +191,7 @@ int game_init(int humans, int cpus)
 	ret_val = 0;
 	n = humans + cpus;
 	players = malloc(sizeof(*players) * n);
+	anims = NULL;
 
 	if(!players) {
 		ret_val = -ENOMEM;
@@ -294,10 +297,11 @@ int game_num_players(void)
 
 void game_animate(void)
 {
+	anim_inst **pptr;
+	anim_inst *a;
 	int n;
 
-	/* advance all animations one frame */
-
+	/* advance player movements */
 	for(n = 0; n < nplayers; n++) {
 		player *p = players + n;
 
@@ -312,6 +316,30 @@ void game_animate(void)
 		}
 		if(p->dy < 0) {
 			p->dy++;
+		}
+	}
+
+	/* advance animations */
+	for(a = anims; a; a = a->next) {
+		if(a->fpf < 0) {
+			a->frame++;
+			a->fpf = a->base->fpf;
+		}
+
+		a->fpf--;
+	}
+
+	/* remove animations that are done */
+	for(pptr = &anims; *pptr; ) {
+		if((*pptr)->frame >= (*pptr)->base->nframes) {
+			anim_inst *free_me;
+
+			free_me = *pptr;
+			*pptr = (*pptr)->next;
+
+			free(free_me);
+		} else {
+			pptr = &((*pptr)->next);
 		}
 	}
 
@@ -410,10 +438,24 @@ void boulder_damage(object *o, const int dmg, bomb *b)
 	return;
 }
 
+anim_inst* game_get_anims(void)
+{
+	return(anims);
+}
+
 void bomb_detonate(bomb *b)
 {
+	anim_inst *a;
 	int tx, ty;
 	int i;
+
+	/* add explosion animation at the location of the bomb */
+	a = anim_get_inst(ANIM_EXPLOSION, obj_x(b), obj_y(b));
+
+	if(a) {
+		a->next = anims;
+		anims = a;
+	}
 
 	/* check if a player is standing on the bomb */
 	for(i = 0; i < nplayers; i++) {
@@ -721,8 +763,6 @@ int game_ask_universe(int prob)
 	if(fd < 0) {
 		static int _sr_initialized = 0;
 
-		printf("Falling back to srand()\n");
-
 		if(!_sr_initialized) {
 			srand(time(NULL));
 			_sr_initialized = 1;
@@ -730,8 +770,6 @@ int game_ask_universe(int prob)
 
 		rnd = rand() % 100;
 	}
-
-	printf("%d < %d\n", rnd, prob);
 
 	return(rnd < prob ? 1 : 0);
 }
@@ -758,8 +796,6 @@ int game_ask_universe2(const int l, const int u)
 
 	if(fd < 0) {
 		static int _sr_initialized = 0;
-
-		printf("Falling back to srand()\n");
 
 		if(!_sr_initialized) {
 			srand(time(NULL));

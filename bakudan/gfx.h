@@ -18,6 +18,7 @@ typedef enum {
 int gfx_init(void);
 int gfx_quit(void);
 
+SDL_Surface* gfx_load_image(const char*);
 int gfx_draw_menu(int);
 int gfx_draw_game(void);
 void gfx_draw_sboard(void);

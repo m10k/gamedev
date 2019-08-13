@@ -6,6 +6,7 @@
 #include <assert.h>
 #include "gfx.h"
 #include "game.h"
+#include "anim.h"
 
 #define FONT_PATH "/usr/share/fonts/opentype/ipafont-gothic/ipag.ttf"
 #define FONT_SIZE 32
@@ -152,6 +153,13 @@ int gfx_init(void)
 		goto gtfo;
 	}
 
+	ret_val = anim_init();
+
+	if(ret_val < 0) {
+		fprintf(stderr, "anim_init: %s\n", strerror(-ret_val));
+		goto gtfo;
+	}
+
 gtfo:
 	if(ret_val < 0) {
 		gfx_quit();
@@ -174,6 +182,8 @@ int gfx_quit(void)
 
 	if(_sdl_initialized) {
 		int i;
+
+		anim_quit();
 
 		for(i = 0; i < MENU_NUM; i++) {
 			if(_menu_sprites[i]) {
@@ -207,7 +217,7 @@ int gfx_quit(void)
 	return(-ENOSYS);
 }
 
-static SDL_Surface *_load_image(const char *path)
+SDL_Surface *gfx_load_image(const char *path)
 {
 	SDL_Surface *raw;
 	SDL_Surface *ret_val;
@@ -257,11 +267,11 @@ static int _gfx_generate(void)
 	_menu_w += _menu_p[H] + _menu_p[H];
 
 	for(i = 0; i < SPRITE_NONE; i++) {
-		_env_sprites[i] = _load_image(_env_gfx[i]);
+		_env_sprites[i] = gfx_load_image(_env_gfx[i]);
 
 		if(!_env_sprites[i]) {
 			ret_val = -EFAULT;
-			fprintf(stderr, "_load_image: %s\n", SDL_GetError());
+			fprintf(stderr, "gfx_load_image: %s\n", SDL_GetError());
 			goto cleanup;
 		}
 	}
@@ -345,6 +355,7 @@ int gfx_draw_menu(int selection)
 
 int gfx_draw_game(void)
 {
+	anim_inst *a;
 	int ret_val;
 	int x, y;
 
@@ -448,6 +459,11 @@ int gfx_draw_game(void)
 		dpos.y = (obj_y(p) * 32) + p->dy;
 
 		SDL_BlitSurface(_player_sprites[p->num], NULL, _surface, &dpos);
+	}
+
+	/* draw animations */
+	for(a = game_get_anims(); a; a = a->next) {
+		anim_inst_draw(a, _surface);
 	}
 
 	return(ret_val);

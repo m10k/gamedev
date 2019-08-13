@@ -1,10 +1,12 @@
 #ifndef GAME_H
 #define GAME_H
 
+#include "anim.h"
+
 #define WIDTH 17
 #define HEIGHT 17
 
-#define FPS             50
+#define FPS             60
 #define TICKS_PER_FRAME (1000 / FPS)
 
 /*
@@ -155,5 +157,6 @@ int  game_ask_universe2(const int, const int);
 void game_player_move(const int, const int, const int);
 void game_player_action(const int);
 void game_cleanup(void);
+anim_inst* game_get_anims(void);
 
 #endif /* GAME_H */
