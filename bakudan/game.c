@@ -15,6 +15,15 @@ static int nplayers = 0;
 static object *objects[WIDTH][HEIGHT];
 static int alive_players;
 
+static const char *_item_names[] = {
+	"BAG",
+	"LIFE",
+	"LUCK",
+	"POTION",
+	"POWER",
+	"TIME"
+};
+
 #define IS_WALL(x,y)    (x == 0 || y == 0 || x == (WIDTH - 1) || y == (HEIGHT - 1))
 #define IS_PILLAR(x,y)  (x > 0 && y > 0 && (x % 2 == 0) && (y % 2 == 0))
 #define IS_SPAWN(x,y)   (!IS_WALL(x,y) && ((x <= 2 && y <= 2) || \
@@ -89,7 +98,9 @@ static void drop_item(const int x, const int y)
 	item_type type;
 	item *i;
 
-	type = game_ask_universe2(0, ITEM_TYPE_NUM - 1);
+	type = game_ask_universe2(0, ITEM_TYPE_NUM);
+
+	printf("Item type: %d\n", type);
 
 	i = (item*)make_object(OBJECT_TYPE_ITEM, x, y);
 
@@ -106,7 +117,7 @@ static void drop_item(const int x, const int y)
 			break;
 
 		case ITEM_TYPE_LUCK:
-			i->probability = game_ask_universe2(-10, 10);
+			i->probability = game_ask_universe2(-5, 15);
 			break;
 
 		case ITEM_TYPE_POTION:
@@ -114,11 +125,11 @@ static void drop_item(const int x, const int y)
 			break;
 
 		case ITEM_TYPE_TIME:
-			i->health = game_ask_universe2(-3, 3);
+			i->bomb_timeout = game_ask_universe2(-3, 3);
 			break;
 
 		case ITEM_TYPE_POWER:
-			i->health = game_ask_universe2(-500, 500);
+			i->bomb_strength = game_ask_universe2(-500, 500);
 			break;
 
 		default:
@@ -139,8 +150,30 @@ void drop_life(const int x, const int y)
 	i = (item*)make_object(OBJECT_TYPE_ITEM, PLX(x), PLY(x));
 
 	if(i) {
+		i->type = ITEM_TYPE_LIFE;
 		i->lifes = 1;
 		objects[x][y] = (object*)i;
+	}
+
+	return;
+}
+
+void game_cleanup(void)
+{
+	int x, y;
+
+	if(players) {
+		free(players);
+		players = NULL;
+	}
+
+	for(x = 0; x < WIDTH; x++) {
+		for(y = 0; y < HEIGHT; y++) {
+			if(objects[x][y]) {
+				free(objects[x][y]);
+				objects[x][y] = NULL;
+			}
+		}
 	}
 
 	return;
@@ -382,6 +415,13 @@ void bomb_detonate(bomb *b)
 	int tx, ty;
 	int i;
 
+	/* check if a player is standing on the bomb */
+	for(i = 0; i < nplayers; i++) {
+		if(PLX(i) == obj_x(b) && PLY(i) == obj_y(b)) {
+			player_damage(i, b->strength, b);
+		}
+	}
+
 	for(tx = obj_x(b) - 1, ty = obj_y(b);
 		tx > 0; tx--) {
 		object *o;
@@ -554,16 +594,20 @@ void game_logic(void)
 			switch(o->type) {
 			case OBJECT_TYPE_BOULDER:
 				if(((boulder*)o)->strength <= 0) {
+					int p;
+
+					p = ((boulder*)o)->attacker;
+
 					free(o);
 					objects[x][y] = NULL;
 
 					/* decide whether to spawn an item */
-					if(game_ask_universe(players[((boulder*)o)->attacker].probability)) {
+					if(game_ask_universe(players[p].probability)) {
 						printf("Dropping item at (%d, %d)\n", x, y);
 						drop_item(x, y);
 					}
 
-					players[((boulder*)o)->attacker].boulders++;
+					players[p].boulders++;
 				}
 				break;
 
@@ -585,14 +629,16 @@ void game_logic(void)
 
 	for(x = 0; x < nplayers; x++) {
 		if(players[x].alive) {
-			if(players[x].health <= 0) {
-				printf("Player %d killed %d\n", players[x].attacker, x);
+			object *o;
 
-				players[x].deaths++;
-				players[players[x].attacker].frags++;
+			if(players[x].health <= 0) {
+				printf("P%dがP%dを殺した\n", players[x].attacker, x);
 
 				if(players[x].attacker == x) {
 					players[x].suicides++;
+				} else {
+					players[x].deaths++;
+					players[players[x].attacker].frags++;
 				}
 
 				/* drop a life? */
@@ -609,6 +655,33 @@ void game_logic(void)
 					players[x].alive = 0;
 					alive_players--;
 				}
+			}
+
+			o = objects[PLX(x)][PLY(x)];
+
+			if(o && o->type == OBJECT_TYPE_ITEM) {
+				printf("P%dが%sを拾った\n", x, _item_names[((item*)o)->type]);
+
+				/* player x collects item */
+				objects[PLX(x)][PLY(x)] = NULL;
+
+				/* add stats from item */
+				printf("\tHP    : %d + %d\n", players[x].health, ((item*)o)->health);
+				players[x].health += ((item*)o)->health;
+				printf("\t弾    : %d + %d\n", players[x].bombs, ((item*)o)->bombs);
+				players[x].bombs += ((item*)o)->bombs;
+				printf("\t可能性: %d + %d\n", players[x].probability, ((item*)o)->probability);
+				players[x].probability += ((item*)o)->probability;
+				printf("\t爆力  : %d + %d\n", players[x].bomb_strength, ((item*)o)->bomb_strength);
+				players[x].bomb_strength += ((item*)o)->bomb_strength;
+				printf("\t爆時  : %d + %d\n", players[x].bomb_timeout, ((item*)o)->bomb_timeout);
+				players[x].bomb_timeout += ((item*)o)->bomb_timeout;
+				printf("\t命    : %d + %d\n", players[x].lifes, ((item*)o)->lifes);
+				players[x].lifes += ((item*)o)->lifes;
+
+				players[x].items++;
+
+				free(o);
 			}
 		}
 	}
@@ -697,6 +770,10 @@ int game_ask_universe2(const int l, const int u)
 	}
 
 	rnd = (rnd % (u - l)) + l;
+
+	while(rnd < l) {
+		rnd += (u - l);
+	}
 
 	return(rnd);
 }

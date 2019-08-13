@@ -100,6 +100,7 @@ typedef struct {
 	int deaths;
 	int boulders;
 	int suicides;
+	int items;
 } player;
 
 typedef struct {
@@ -153,5 +154,6 @@ int  game_ask_universe2(const int, const int);
 
 void game_player_move(const int, const int, const int);
 void game_player_action(const int);
+void game_cleanup(void);
 
 #endif /* GAME_H */

@@ -96,6 +96,21 @@ static void _menu_handle_input(SDL_Event *ev)
 	return;
 }
 
+static void _game_over_handle_input(SDL_Event *ev)
+{
+	switch(ev->key.keysym.sym) {
+	case SDLK_q:
+		_stop = 1;
+		break;
+
+	default:
+		_state = GAME_STATE_MENU;
+		break;
+	}
+
+	return;
+}
+
 static void _game_handle_input_sp(SDL_Event *ev)
 {
 	switch(ev->key.keysym.sym) {
@@ -146,12 +161,22 @@ static void _input(void)
 			return;
 
 		case SDL_KEYUP:
-			if(_state == GAME_STATE_MENU) {
+			switch(_state) {
+			case GAME_STATE_MENU:
 				_menu_handle_input(&ev);
-			} else if(_state == GAME_STATE_SP) {
-				_game_handle_input_sp(&ev);
-			}
+				break;
 
+			case GAME_STATE_SP:
+				_game_handle_input_sp(&ev);
+				break;
+
+			case GAME_STATE_SBOARD:
+				_game_over_handle_input(&ev);
+				break;
+
+			default:
+				break;
+			}
 			break;
 
 		default:
@@ -192,17 +217,24 @@ static void _output(void)
 	case GAME_STATE_SBOARD:
 		/* draw game state */
 
+		gfx_draw_game();
+
 		if(_state == GAME_STATE_PAUSE) {
 			/* draw pause overlay */
 		} else if(_state == GAME_STATE_SBOARD) {
 			/* draw scoreboard */
+
+			gfx_draw_sboard();
 		}
+
 		break;
 
 	default:
 		assert(0);
 		break;
 	}
+
+	gfx_update_window();
 
 	return;
 }
@@ -245,6 +277,13 @@ int engine_quit(void)
 
 void engine_set_state(game_state state)
 {
+	if((_state == GAME_STATE_SP ||
+		_state == GAME_STATE_MP) &&
+		_state != state) {
+		gfx_cleanup();
+		game_cleanup();
+	}
+
 	_state = state;
 	return;
 }
