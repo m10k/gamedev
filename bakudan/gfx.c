@@ -214,7 +214,7 @@ int gfx_quit(void)
 		_sdl_initialized = 0;
 	}
 
-	return(-ENOSYS);
+	return(0);
 }
 
 SDL_Surface *gfx_load_image(const char *path)
