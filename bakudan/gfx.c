@@ -26,6 +26,7 @@ static SDL_Color _textcolor = { 0x22, 0x22, 0x22 };
 static int _menu_w = 0;
 static int _menu_h = 0;
 static int _menu_p[2] = { 16, 8 };
+static SDL_Surface *_sboard;
 
 static SDL_Color _env_color[] = {
 	{ 0x22, 0x22, 0x22 },
@@ -73,11 +74,28 @@ static const char *_env_caption[SPRITE_NONE] = {
 	"弾"
 };
 
+static const char *_player_names[] = {
+	"赤",
+	"緑",
+	"青",
+	"黄"
+};
+
 static SDL_Surface *_menu_sprites[MENU_NUM];
 static SDL_Surface *_env_sprites[SPRITE_NONE];
 static SDL_Surface *_player_sprites[COLOR_NUM];
 
 static int _gfx_generate(void);
+
+void gfx_cleanup(void)
+{
+	if(_sboard) {
+		SDL_FreeSurface(_sboard);
+		_sboard = NULL;
+	}
+
+	return;
+}
 
 int gfx_init(void)
 {
@@ -365,6 +383,39 @@ int gfx_draw_game(void)
 					st = SPRITE_BOMB;
 					break;
 
+				case OBJECT_TYPE_ITEM:
+					/* draw item */
+
+					switch(((item*)o)->type) {
+					case ITEM_TYPE_BAG:
+						st = SPRITE_BAG;
+						break;
+
+					case ITEM_TYPE_LIFE:
+						st = SPRITE_LIFE;
+						break;
+
+					case ITEM_TYPE_LUCK:
+						st = SPRITE_LUCK;
+						break;
+
+					case ITEM_TYPE_POTION:
+						st = SPRITE_POTION;
+						break;
+
+					case ITEM_TYPE_POWER:
+						st = SPRITE_POWER;
+						break;
+
+					case ITEM_TYPE_TIME:
+						st = SPRITE_TIME;
+						break;
+
+					default:
+						printf("BUG [%s:%d] Unknown item type\n", __FILE__, __LINE__);
+						break;
+					}
+
 				default:
 					break;
 				}
@@ -399,7 +450,64 @@ int gfx_draw_game(void)
 		SDL_BlitSurface(_player_sprites[p->num], NULL, _surface, &dpos);
 	}
 
-	SDL_UpdateWindowSurface(_window);
-
 	return(ret_val);
+}
+
+void gfx_draw_sboard(void)
+{
+	if(!_sboard) {
+		char sboard[2048];
+		int off;
+		int i;
+
+		off = snprintf(sboard, sizeof(sboard),
+					   "奴\t殺\t死\t自\t岩\t物\n");
+
+		for(i = 0; i < game_num_players(); i++) {
+			player *p;
+
+			p = game_player_num(i);
+
+			off += snprintf(sboard + off, sizeof(sboard) - off,
+							"%s\t%d\t%d\t%d\t%d\t%d%s",
+							_player_names[i],
+							p->frags, p->deaths, p->suicides,
+							p->boulders, p->items,
+							i + 1 == game_num_players() ? "" : "\n");
+		}
+
+		printf("%s\n", sboard);
+
+		_sboard = TTF_RenderUTF8_Solid(_font, sboard, _textcolor);
+	}
+
+	if(_sboard) {
+		SDL_Rect drect;
+
+		drect.w = _sboard->w + 2;
+		drect.h = _sboard->w + 2;
+		drect.x = (_surface->w - drect.w) / 2;
+		drect.y = (_surface->w - drect.h) / 2;
+
+		SDL_FillRect(_surface, &drect,
+					 SDL_MapRGB(_surface->format, 0, 0, 0));
+
+		drect.w -= 2;
+		drect.h -= 2;
+		drect.x++;
+		drect.y++;
+
+		SDL_FillRect(_surface, &drect,
+					 SDL_MapRGB(_surface->format, 0xff, 0xff, 0xff));
+
+		SDL_BlitSurface(_sboard, NULL, _surface, &drect);
+	}
+
+	return;
+}
+
+void gfx_update_window(void)
+{
+	SDL_UpdateWindowSurface(_window);
+	return;
 }

@@ -20,5 +20,8 @@ int gfx_quit(void);
 
 int gfx_draw_menu(int);
 int gfx_draw_game(void);
+void gfx_draw_sboard(void);
+void gfx_update_window(void);
+void gfx_cleanup(void);
 
 #endif /* GFX_H */
