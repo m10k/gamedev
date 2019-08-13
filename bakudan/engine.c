@@ -210,6 +210,7 @@ static void _output(void)
 
 	case GAME_STATE_SP:
 		gfx_draw_game();
+		gfx_draw_stats();
 		break;
 
 	case GAME_STATE_MP:
@@ -223,8 +224,6 @@ static void _output(void)
 			/* draw pause overlay */
 		} else if(_state == GAME_STATE_SBOARD) {
 			/* draw scoreboard */
-
-			gfx_draw_sboard();
 		}
 
 		break;

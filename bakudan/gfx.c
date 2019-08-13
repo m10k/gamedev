@@ -8,9 +8,12 @@
 #include "game.h"
 #include "anim.h"
 
-#define FONT_PATH "/usr/share/fonts/opentype/ipafont-gothic/ipag.ttf"
-#define FONT_SIZE 32
+#define FONT_PATH   "/usr/share/fonts/opentype/ipafont-gothic/ipag.ttf"
+#define SFONT_SIZE  16
+#define FONT_SIZE   32
 #define PLAYER_CHAR "人"
+
+#define STATS_WIDTH 256
 
 #define H 0
 #define V 1
@@ -19,7 +22,8 @@ static int _sdl_initialized;
 static int _ttf_initialized;
 static SDL_Window *_window;
 static TTF_Font *_font;
-static int _width = 32 * WIDTH;
+static TTF_Font *_sfont;
+static int _width = 32 * WIDTH + STATS_WIDTH;
 static int _height = 32 * HEIGHT;
 static SDL_Surface *_surface;
 static SDL_Surface *_sprites[GAME_SPRITE_NUM];
@@ -146,6 +150,14 @@ int gfx_init(void)
 		goto gtfo;
 	}
 
+	_sfont = TTF_OpenFont(FONT_PATH, SFONT_SIZE);
+
+	if(!_sfont) {
+		fprintf(stderr, "TTF_OpenFont: %s\n", TTF_GetError());
+		ret_val = -EFAULT;
+		goto gtfo;
+	}
+
 	ret_val = _gfx_generate();
 
 	if(ret_val < 0) {
@@ -174,6 +186,11 @@ int gfx_quit(void)
 		if(_font) {
 			TTF_CloseFont(_font);
 			_font = NULL;
+		}
+
+		if(_sfont) {
+			TTF_CloseFont(_sfont);
+			_sfont = NULL;
 		}
 
 		TTF_Quit();
@@ -469,54 +486,37 @@ int gfx_draw_game(void)
 	return(ret_val);
 }
 
-void gfx_draw_sboard(void)
+void gfx_draw_stats(void)
 {
-	if(!_sboard) {
-		char sboard[2048];
-		int off;
-		int i;
+	static SDL_Surface *header;
+	SDL_Rect drect;
+	int i;
 
-		off = snprintf(sboard, sizeof(sboard),
-					   "奴\t殺\t死\t自\t岩\t物\n");
-
-		for(i = 0; i < game_num_players(); i++) {
-			player *p;
-
-			p = game_player_num(i);
-
-			off += snprintf(sboard + off, sizeof(sboard) - off,
-							"%s\t%d\t%d\t%d\t%d\t%d%s",
-							_player_names[i],
-							p->frags, p->deaths, p->suicides,
-							p->boulders, p->items,
-							i + 1 == game_num_players() ? "" : "\n");
-		}
-
-		printf("%s\n", sboard);
-
-		_sboard = TTF_RenderUTF8_Solid(_font, sboard, _textcolor);
+	if(!header) {
+		header = TTF_RenderUTF8_Solid(_sfont, "   F    D    S    B    I", _textcolor);
 	}
 
-	if(_sboard) {
-		SDL_Rect drect;
+	drect.x = 32 * WIDTH + 8;
+	drect.y = 8;
 
-		drect.w = _sboard->w + 2;
-		drect.h = _sboard->w + 2;
-		drect.x = (_surface->w - drect.w) / 2;
-		drect.y = (_surface->w - drect.h) / 2;
+	if(header) {
+		SDL_BlitSurface(header, NULL, _surface, &drect);
+		drect.y += header->h + 4;
+	}
 
-		SDL_FillRect(_surface, &drect,
-					 SDL_MapRGB(_surface->format, 0, 0, 0));
+	for(i = 0; i < game_num_players(); i++) {
+		player *p;
+		SDL_Surface *s;
+		char line[128];
 
-		drect.w -= 2;
-		drect.h -= 2;
-		drect.x++;
-		drect.y++;
+		p = game_player_num(i);
 
-		SDL_FillRect(_surface, &drect,
-					 SDL_MapRGB(_surface->format, 0xff, 0xff, 0xff));
+		snprintf(line, sizeof(line), "%4d %4d %4d %4d %4d",
+				 p->frags, p->deaths, p->suicides, p->boulders, p->items);
 
-		SDL_BlitSurface(_sboard, NULL, _surface, &drect);
+		s = TTF_RenderUTF8_Solid(_sfont, line, _player_color[i]);
+		SDL_BlitSurface(s, NULL, _surface, &drect);
+		drect.y += header->h + 4;
 	}
 
 	return;
