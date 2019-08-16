@@ -489,11 +489,20 @@ int gfx_draw_game(void)
 void gfx_draw_stats(void)
 {
 	static SDL_Surface *header;
+	static SDL_Surface *header2;
 	SDL_Rect drect;
 	int i;
 
 	if(!header) {
-		header = TTF_RenderUTF8_Solid(_sfont, "  殺   死   自   岩   物", _textcolor);
+		header = TTF_RenderUTF8_Solid(_sfont,
+									  "   殺   死   自   岩   物",
+									  _textcolor);
+	}
+
+	if(!header2) {
+		header2 = TTF_RenderUTF8_Solid(_sfont,
+									   "   HP   弾   運   力   時   命",
+									   _textcolor);
 	}
 
 	drect.x = 32 * WIDTH + 8;
@@ -510,7 +519,7 @@ void gfx_draw_stats(void)
 
 			p = game_player_num(i);
 
-			snprintf(line, sizeof(line), "%4d %4d %4d %4d %4d",
+			snprintf(line, sizeof(line), " %4d %4d %4d %4d %4d",
 					 p->frags, p->deaths, p->suicides, p->boulders, p->items);
 
 			s = TTF_RenderUTF8_Solid(_sfont, line, _player_color[i]);
@@ -518,6 +527,39 @@ void gfx_draw_stats(void)
 			if(s) {
 				SDL_BlitSurface(s, NULL, _surface, &drect);
 				drect.y += header->h + 4;
+				SDL_FreeSurface(s);
+			}
+		}
+	}
+
+	drect.y += 16;
+
+	if(header2) {
+		SDL_BlitSurface(header2, NULL, _surface, &drect);
+		drect.y += header2->h + 4;
+
+		for(i = 0; i < game_num_players(); i++) {
+			player *p;
+			SDL_Surface *s;
+			char line[128];
+
+			p = game_player_num(i);
+
+			if(p->health < 0) {
+				snprintf(line, sizeof(line), "%4d %4d %4d %4d %4d %4d",
+						 p->health, p->bombs, p->probability,
+						 p->bomb_strength, p->bomb_timeout, p->lifes);
+			} else {
+				snprintf(line, sizeof(line), " %4d %4d %4d %4d %4d %4d",
+						 p->health, p->bombs, p->probability,
+						 p->bomb_strength, p->bomb_timeout, p->lifes);
+			}
+
+			s = TTF_RenderUTF8_Solid(_sfont, line, _player_color[i]);
+
+			if(s) {
+				SDL_BlitSurface(s, NULL, _surface, &drect);
+				drect.y += header2->h + 4;
 				SDL_FreeSurface(s);
 			}
 		}
