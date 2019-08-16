@@ -16,6 +16,7 @@ static int nplayers = 0;
 static object *objects[WIDTH][HEIGHT];
 static int alive_players;
 static anim_inst *anims;
+static int winner;
 
 static const char *_item_names[] = {
 	"BAG",
@@ -192,6 +193,7 @@ int game_init(int humans, int cpus)
 	n = humans + cpus;
 	players = malloc(sizeof(*players) * n);
 	anims = NULL;
+	winner = -1;
 
 	if(!players) {
 		ret_val = -ENOMEM;
@@ -730,7 +732,15 @@ void game_logic(void)
 
 	if(alive_players < 2) {
 		/* game over */
-		engine_set_state(GAME_STATE_SBOARD);
+
+		for(x = 0; x < nplayers; x++) {
+			if(players[x].alive) {
+				winner = x;
+				break;
+			}
+		}
+
+		engine_set_state(GAME_STATE_END);
 	}
 
 	return;
@@ -812,4 +822,9 @@ int game_ask_universe2(const int l, const int u)
 	}
 
 	return(rnd);
+}
+
+int game_get_winner(void)
+{
+	return(winner);
 }

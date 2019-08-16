@@ -49,7 +49,7 @@ typedef enum {
 	GAME_STATE_SP,
 	GAME_STATE_MP,
 	GAME_STATE_PAUSE,
-	GAME_STATE_SBOARD
+	GAME_STATE_END
 } game_state;
 
 typedef enum {
@@ -149,6 +149,7 @@ int game_init(const int, const int);
 object* game_object_at(const int, const int);
 player* game_player_num(const int);
 int game_num_players(void);
+int game_get_winner(void);
 void game_animate(void);
 void game_logic(void);
 int  game_ask_universe(const int);

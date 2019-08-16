@@ -105,6 +105,8 @@ static void _game_over_handle_input(SDL_Event *ev)
 
 	default:
 		_state = GAME_STATE_MENU;
+		game_cleanup();
+
 		break;
 	}
 
@@ -170,7 +172,7 @@ static void _input(void)
 				_game_handle_input_sp(&ev);
 				break;
 
-			case GAME_STATE_SBOARD:
+			case GAME_STATE_END:
 				_game_over_handle_input(&ev);
 				break;
 
@@ -214,17 +216,16 @@ static void _output(void)
 		break;
 
 	case GAME_STATE_MP:
+		break;
+
 	case GAME_STATE_PAUSE:
-	case GAME_STATE_SBOARD:
+		break;
+
+	case GAME_STATE_END:
 		/* draw game state */
-
 		gfx_draw_game();
-
-		if(_state == GAME_STATE_PAUSE) {
-			/* draw pause overlay */
-		} else if(_state == GAME_STATE_SBOARD) {
-			/* draw scoreboard */
-		}
+		gfx_draw_stats();
+		gfx_draw_winner();
 
 		break;
 
@@ -276,13 +277,6 @@ int engine_quit(void)
 
 void engine_set_state(game_state state)
 {
-	if((_state == GAME_STATE_SP ||
-		_state == GAME_STATE_MP) &&
-		_state != state) {
-		gfx_cleanup();
-		game_cleanup();
-	}
-
 	_state = state;
 	return;
 }

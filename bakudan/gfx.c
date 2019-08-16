@@ -493,7 +493,7 @@ void gfx_draw_stats(void)
 	int i;
 
 	if(!header) {
-		header = TTF_RenderUTF8_Solid(_sfont, "   F    D    S    B    I", _textcolor);
+		header = TTF_RenderUTF8_Solid(_sfont, "  殺   死   自   岩   物", _textcolor);
 	}
 
 	drect.x = 32 * WIDTH + 8;
@@ -502,21 +502,25 @@ void gfx_draw_stats(void)
 	if(header) {
 		SDL_BlitSurface(header, NULL, _surface, &drect);
 		drect.y += header->h + 4;
-	}
 
-	for(i = 0; i < game_num_players(); i++) {
-		player *p;
-		SDL_Surface *s;
-		char line[128];
+		for(i = 0; i < game_num_players(); i++) {
+			player *p;
+			SDL_Surface *s;
+			char line[128];
 
-		p = game_player_num(i);
+			p = game_player_num(i);
 
-		snprintf(line, sizeof(line), "%4d %4d %4d %4d %4d",
-				 p->frags, p->deaths, p->suicides, p->boulders, p->items);
+			snprintf(line, sizeof(line), "%4d %4d %4d %4d %4d",
+					 p->frags, p->deaths, p->suicides, p->boulders, p->items);
 
-		s = TTF_RenderUTF8_Solid(_sfont, line, _player_color[i]);
-		SDL_BlitSurface(s, NULL, _surface, &drect);
-		drect.y += header->h + 4;
+			s = TTF_RenderUTF8_Solid(_sfont, line, _player_color[i]);
+
+			if(s) {
+				SDL_BlitSurface(s, NULL, _surface, &drect);
+				drect.y += header->h + 4;
+				SDL_FreeSurface(s);
+			}
+		}
 	}
 
 	return;
@@ -525,5 +529,49 @@ void gfx_draw_stats(void)
 void gfx_update_window(void)
 {
 	SDL_UpdateWindowSurface(_window);
+	return;
+}
+
+void gfx_draw_winner(void)
+{
+	int winner;
+	SDL_Surface *s;
+	char str[128];
+
+	winner = game_get_winner();
+
+	snprintf(str, sizeof(str), "%sの勝ちだ！＼（＾＿＾）／", _player_names[winner]);
+
+	s = TTF_RenderUTF8_Solid(_font, str, _player_color[winner]);
+
+	if(s) {
+		SDL_Rect drect;
+
+		drect.w = s->w + 10;
+		drect.h = s->h + 10;
+		drect.x = (_surface->w - drect.w) / 2;
+		drect.y = (_surface->h - drect.h) / 2;
+
+		SDL_FillRect(_surface, &drect, SDL_MapRGB(_surface->format,
+												  0, 0, 0));
+
+		drect.x++;
+		drect.y++;
+		drect.w -= 2;
+		drect.h -= 2;
+
+		SDL_FillRect(_surface, &drect, SDL_MapRGB(_surface->format,
+												  0xff, 0xff, 0xff));
+
+		drect.x += 4;
+		drect.y += 4;
+		drect.w = s->w;
+		drect.h = s->h;
+
+		SDL_BlitSurface(s, NULL, _surface, &drect);
+
+		SDL_FreeSurface(s);
+	}
+
 	return;
 }
