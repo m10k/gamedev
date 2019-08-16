@@ -9,11 +9,12 @@
 #include "game.h"
 #include "engine.h"
 #include "anim.h"
+#include "ai.h"
 
-static player *players = NULL;
-static player *cpu = NULL;
+player *players = NULL;
+player *cpu = NULL;
 static int nplayers = 0;
-static object *objects[WIDTH][HEIGHT];
+object *objects[WIDTH][HEIGHT];
 static int alive_players;
 static anim_inst *anims;
 static int winner;
@@ -205,6 +206,10 @@ int game_init(int humans, int cpus)
 	alive_players = n;
 	cpu = players + humans;
 
+	if(cpus > 0) {
+		ai_init(cpus, humans);
+	}
+
 	if(n == 2) {
 		SETPSPAWN(0, 1, 1);
 		SETPSPAWN(1, WIDTH - 2, HEIGHT - 2);
@@ -250,8 +255,8 @@ int game_init(int humans, int cpus)
 				objects[x][y] = make_object(OBJECT_TYPE_WALL, x, y);
 				assert(objects[x][y]);
 			} else if(IS_BOULDER(x, y)) {
-				objects[x][y] = make_object(OBJECT_TYPE_BOULDER, x, y);
-				assert(objects[x][y]);
+/*				objects[x][y] = make_object(OBJECT_TYPE_BOULDER, x, y);
+				assert(objects[x][y]); */
 			} else if(IS_PILLAR(x, y)) {
 				objects[x][y] = make_object(OBJECT_TYPE_PILLAR, x, y);
 				assert(objects[x][y]);
@@ -348,9 +353,29 @@ void game_animate(void)
 	return;
 }
 
+int game_player_moving(const int p)
+{
+	return(players[p].dx || players[p].dy);
+}
+
+void game_player_move_abs(const int p, const int x, const int y)
+{
+	int dx;
+	int dy;
+
+	dx = x - PLX(p);
+	dy = y - PLY(p);
+
+	game_player_move(p, dx, dy);
+
+	return;
+}
+
 void game_player_move(const int p, const int dx, const int dy)
 {
 	int tx, ty;
+
+	printf("%s(%d, %d, %d)\n", __func__, p, dx, dy);
 
 	/* player is still moving from previous call */
 	if(players[p].dx || players[p].dy) {
@@ -370,12 +395,18 @@ void game_player_move(const int p, const int dx, const int dy)
 	return;
 }
 
+int game_player_can_plant(const int p)
+{
+	return(!game_player_moving(p) &&
+		   players[p].bombs > 0);
+}
+
 void game_player_action(const int p)
 {
 	object *o;
 	int px, py;
 
-	if(players[p].bombs > 0) {
+	if(game_player_can_plant(p)) {
 		px = PLX(p);
 		py = PLY(p);
 
@@ -746,6 +777,8 @@ void game_logic(void)
 		}
 
 		engine_set_state(GAME_STATE_END);
+	} else {
+		ai_tick();
 	}
 
 	return;

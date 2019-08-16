@@ -155,7 +155,10 @@ void game_logic(void);
 int  game_ask_universe(const int);
 int  game_ask_universe2(const int, const int);
 
+int game_player_moving(const int);
+void game_player_move_abs(const int, const int, const int);
 void game_player_move(const int, const int, const int);
+int game_player_can_plant(const int);
 void game_player_action(const int);
 void game_cleanup(void);
 anim_inst* game_get_anims(void);

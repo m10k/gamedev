@@ -546,7 +546,7 @@ void gfx_draw_stats(void)
 			p = game_player_num(i);
 
 			if(p->health < 0) {
-				snprintf(line, sizeof(line), "%4d %4d %4d %4d %4d %4d",
+				snprintf(line, sizeof(line), "%+4d %4d %4d %4d %4d %4d",
 						 p->health, p->bombs, p->probability,
 						 p->bomb_strength, p->bomb_timeout, p->lifes);
 			} else {

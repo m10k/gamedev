@@ -1,4 +1,4 @@
-OBJECTS = main.o engine.o gfx.o game.o anim.o
+OBJECTS = main.o engine.o gfx.o game.o anim.o ai.o
 OUTPUT = bakudan
 CFLAGS += $(shell sdl2-config --cflags)
 LIBS += $(shell sdl2-config --libs) -lSDL2_ttf -lSDL2_image
