@@ -352,6 +352,11 @@ void game_player_move(const int p, const int dx, const int dy)
 {
 	int tx, ty;
 
+	/* player is still moving from previous call */
+	if(players[p].dx || players[p].dy) {
+		return;
+	}
+
 	tx = PLX(p) + dx;
 	ty = PLY(p) + dy;
 
