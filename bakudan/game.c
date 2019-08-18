@@ -255,8 +255,10 @@ int game_init(int humans, int cpus)
 				objects[x][y] = make_object(OBJECT_TYPE_WALL, x, y);
 				assert(objects[x][y]);
 			} else if(IS_BOULDER(x, y)) {
-/*				objects[x][y] = make_object(OBJECT_TYPE_BOULDER, x, y);
-				assert(objects[x][y]); */
+#ifndef NO_BOULDERS
+				objects[x][y] = make_object(OBJECT_TYPE_BOULDER, x, y);
+				assert(objects[x][y]);
+#endif
 			} else if(IS_PILLAR(x, y)) {
 				objects[x][y] = make_object(OBJECT_TYPE_PILLAR, x, y);
 				assert(objects[x][y]);

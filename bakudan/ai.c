@@ -16,6 +16,149 @@ struct pq {
 	struct pq *next;
 };
 
+/*
+ *  0123456789ABCDE
+ * 0###############0
+ * 1#! @@@@@@@@@ !#1
+ * 2# *@*@*@*@*@* #2
+ * 3#@@@@@@@@@@@@@#3
+ * 4#@*@*@*@*@*@*@#4
+ * 5#@@@@@@@@@@@@@#5
+ * 6#@*@*@*@*@*@*@#6
+ * 7#@@@@@@@@@@@@@#7
+ * 8#@*@*@*@*@*@*@#8
+ * 9#@@@@@@@@@@@@@#9
+ * A#@*@*@*@*@*@*@#A
+ * B#@@@@@@@@@@@@@#B
+ * C# *@*@*@*@*@* #C
+ * D#! @@@@@@@@@ !#D
+ * E###############E
+ *  0123456789ABCDE
+ */
+
+#define MIN(a,b) ((a) < (b) ? (a) : (b))
+#define MAX(a,b) ((a) > (b) ? (a) : (b))
+
+object* ai_find_closest(const object_type type, const int x, const int y)
+{
+	extern object *objects[WIDTH][HEIGHT];
+	int dia;
+	int dir;
+
+	for(dia = 1; dia < MAX(WIDTH, HEIGHT) - 2; dia++) {
+		int lx, ly, ux, uy;
+		int tx, ty;
+
+		/* prevent oob accesses to the objects array */
+		lx = MAX(x - dia, 0);
+		ly = MAX(y - dia, 0);
+		ux = MIN(x + dia, WIDTH);
+		uy = MIN(y + dia, HEIGHT);
+
+		/*
+		 * #### U
+		 * #  #
+		 * #  #
+		 * #### D
+		 */
+
+		/* #### U */
+		for(tx = lx; tx <= ux; tx++) {
+			object *o;
+
+			o = objects[tx][ly];
+
+			if(o && o->type == type) {
+				return(o);
+			}
+		}
+
+		/*
+		 * #  #
+		 * #  #
+		 */
+		for(ty = ly + 1; ty < uy; ty++) {
+			object *o;
+
+			o = objects[lx][ty];
+
+			if(o && o->type == type) {
+				return(o);
+			}
+
+			o = objects[ux][ty];
+
+			if(o && o->type == type) {
+				return(o);
+			}
+		}
+
+		/* #### D */
+		for(tx = lx; tx < ux; tx++) {
+			object *o;
+
+			o = objects[tx][uy];
+
+			if(o && o->type == type) {
+				return(o);
+			}
+		}
+	}
+
+	return(NULL);
+}
+
+object* ai_find_closest2(const object_type type, const int x, const int y)
+{
+	extern object* objects[WIDTH][HEIGHT];
+	int dist;
+
+	for(dist = 1; dist < WIDTH + HEIGHT; dist++) {
+		int a, b;
+
+		for(a = dist, b = 0; a >= 0; a--, b++) {
+#define IN_BOUNDS(_a,_b) (((_a) > 0 && (_a) < WIDTH) && \
+						  ((_b) > 0 && (_b) < HEIGHT))
+#define CHECK(_a,_b) do {							\
+				if(IN_BOUNDS((_a), (_b))) {			\
+					object *o = objects[_a][_b];	\
+					if(o && o->type == type) {		\
+						return(o);					\
+					}								\
+				}								\
+			} while(0)
+
+			CHECK(x + a, y + b);
+			CHECK(x + a, y - b);
+			CHECK(x - a, y + b);
+			CHECK(x - a, y - b);
+
+#undef IN_BOUNDS
+#undef CHECK
+		}
+	}
+
+	return(NULL);
+}
+
+int ai_path_length(ai_path *p)
+{
+	int ret_val;
+
+	ret_val = -EINVAL;
+
+	if(p) {
+		ret_val = 0;
+
+		while(p) {
+			p = p->next;
+			ret_val++;
+		}
+	}
+
+	return(ret_val);
+}
+
 void pq_insert(struct pq **head, const int x, const int y, const int d)
 {
 	struct pq *item;
@@ -72,7 +215,9 @@ struct dijkstra_state {
 	int d;
 };
 
-ai_path* ai_find_path(const int sx, const int sy, const int dx, const int dy)
+ai_path* ai_find_path(const int sx, const int sy,
+					  const int dx, const int dy,
+					  const int opts)
 {
 	extern object *objects[WIDTH][HEIGHT];
 
@@ -110,7 +255,8 @@ ai_path* ai_find_path(const int sx, const int sy, const int dx, const int dy)
 		cd = cq->d;
 
 #define CHECK_NEIGHBOR(_x, _y) do {								\
-			if(!objects[_x][_y] || objects[_x][_y]->passable) {	\
+			if(!objects[_x][_y] || objects[_x][_y]->passable || \
+			   (opts && ((_x) == dx && (_y) == dy))) {			\
 				if(state[_x][_y].d == -1) {						\
 					state[_x][_y].x = cx;						\
 					state[_x][_y].y = cy;						\
@@ -134,7 +280,16 @@ ai_path* ai_find_path(const int sx, const int sy, const int dx, const int dy)
 
 		path = NULL;
 
-		for(x = dx, y = dy; x != sx || y != sy; ) {
+		/* omit last step if opts is set */
+		if(!opts) {
+			x = dx;
+			y = dy;
+		} else {
+			x = state[dx][dy].x;
+			y = state[dx][dy].y;
+		}
+
+		do {
 			ai_path *segm;
 			int tx, ty;
 
@@ -152,7 +307,7 @@ ai_path* ai_find_path(const int sx, const int sy, const int dx, const int dy)
 
 			x = tx;
 			y = ty;
-		}
+		} while(x != sx && y != sy);
 
 #if 0
 		while(path) {
@@ -184,6 +339,7 @@ ai_path* ai_find_path(const int sx, const int sy, const int dx, const int dy)
 
 static void _ai_find_objective(ai *me)
 {
+	object *o;
 	int sx, sy;
 	int p;
 
@@ -202,7 +358,7 @@ static void _ai_find_objective(ai *me)
 		px = obj_x(&(players[p]));
 		py = obj_y(&(players[p]));
 
-		path = ai_find_path(sx, sy, px, py);
+		path = ai_find_path(sx, sy, px, py, 1);
 
 		if(!path) {
 			continue;
@@ -217,7 +373,31 @@ static void _ai_find_objective(ai *me)
 		me->obj.y = py;
 
 		me->have_obj = 1;
+		return;
 	}
+
+	/* no path to any enemy, find a boulder to destroy */
+
+	o = ai_find_closest2(OBJECT_TYPE_BOULDER, sx, sy);
+
+	if(o) {
+		printf("Found a boulder to destroy at (%02d, %02d)\n",
+			   o->x, o->y);
+
+		me->obj.type = OBJECTIVE_BOMB;
+		me->obj.path = ai_find_path(sx, sy, o->x, o->y, 1);
+		me->obj.x = o->x;
+		me->obj.y = o->y;
+
+		if(me->obj.path) {
+			me->have_obj = 1;
+			return;
+		} else {
+			printf("No path to boulder\n");
+		}
+	}
+
+	printf("Nothing to do\n");
 
 	return;
 }
@@ -271,7 +451,7 @@ void _ai_think(ai *me)
 
 				me->obj.path = ai_find_path(obj_x(&(players[me->self])),
 											obj_y(&(players[me->self])),
-											x, y);
+											x, y, 1);
 
 				if(!me->obj.path) {
 					me->have_obj = 0;

@@ -34,6 +34,7 @@ typedef struct {
 int ai_init(const int, const int);
 void ai_tick(void);
 
-ai_path* ai_find_path(const int, const int, const int, const int);
+int ai_path_length(ai_path*);
+ai_path* ai_find_path(const int, const int, const int, const int, const int);
 
 #endif /* AI_H */
