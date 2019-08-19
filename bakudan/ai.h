@@ -29,12 +29,16 @@ typedef struct {
 	int self;
 	objective obj;
 	int have_obj;
+	float tolerance;
 } ai;
+
+#define AI_DEFAULT_TOLERANCE 0.2
 
 int ai_init(const int, const int);
 void ai_tick(void);
 
 int ai_path_length(ai_path*);
+int ai_find_refugee(const int, const int, const int, int*, int*);
 ai_path* ai_find_path(const int, const int, const int, const int, const int);
 
 #endif /* AI_H */

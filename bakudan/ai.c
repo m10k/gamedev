@@ -3,7 +3,9 @@
 #include <stdio.h>
 #include "ai.h"
 #include "game.h"
+#include "list.h"
 
+extern list *bombs;
 extern player *players;
 extern player *cpu;
 static ai _ai[4];
@@ -108,6 +110,9 @@ object* ai_find_closest(const object_type type, const int x, const int y)
 	return(NULL);
 }
 
+#define IN_BOUNDS(_a,_b) (((_a) > 0 && (_a) < WIDTH) && \
+						  ((_b) > 0 && (_b) < HEIGHT))
+
 object* ai_find_closest2(const object_type type, const int x, const int y)
 {
 	extern object* objects[WIDTH][HEIGHT];
@@ -117,8 +122,6 @@ object* ai_find_closest2(const object_type type, const int x, const int y)
 		int a, b;
 
 		for(a = dist, b = 0; a >= 0; a--, b++) {
-#define IN_BOUNDS(_a,_b) (((_a) > 0 && (_a) < WIDTH) && \
-						  ((_b) > 0 && (_b) < HEIGHT))
 #define CHECK(_a,_b) do {							\
 				if(IN_BOUNDS((_a), (_b))) {			\
 					object *o = objects[_a][_b];	\
@@ -133,12 +136,46 @@ object* ai_find_closest2(const object_type type, const int x, const int y)
 			CHECK(x - a, y + b);
 			CHECK(x - a, y - b);
 
-#undef IN_BOUNDS
 #undef CHECK
 		}
 	}
 
 	return(NULL);
+}
+
+int ai_find_refugee(const int x, const int y, const int tolerance, int *dx, int *dy)
+{
+	extern object* objects[WIDTH][HEIGHT];
+	int dist;
+
+	for(dist = 1; dist < WIDTH + HEIGHT; dist++) {
+		int a, b;
+
+		for(a = dist, b = 0; a >= 0; a--, b++) {
+#define CHECK(_a,_b) do {												\
+				if(IN_BOUNDS((_a), (_b))) {								\
+					object *o = objects[_a][_b];						\
+					if(!o || (o->passable &&							\
+							  o->type != OBJECT_TYPE_BOMB)) {			\
+						if(!game_location_dangerous((_a), (_b), tolerance)) { \
+							*dx = o->x;									\
+							*dy = o->y;									\
+							return(0);									\
+						}												\
+					} \
+				} \
+			} while(0)
+
+			CHECK(x + a, y + b);
+			CHECK(x + a, y - b);
+			CHECK(x - a, y + b);
+			CHECK(x - a, y - b);
+
+#undef CHECK
+		}
+	}
+
+	return(-ENOENT);
 }
 
 int ai_path_length(ai_path *p)
@@ -415,6 +452,7 @@ int ai_init(int n, int first)
 		for(i = 0; i < n; i++) {
 			_ai[i].self = first + i;
 			_ai[i].have_obj = 0;
+			_ai[i].tolerance = AI_DEFAULT_TOLERANCE;
 		}
 
 		ret_val = 0;
@@ -499,8 +537,33 @@ void _ai_think(ai *me)
 			case OBJECTIVE_HIDE:
 				/* find safe place */
 
-				me->have_obj = 0;
+				if(!me->obj.path) {
+					int tolerance;
+
+					x = obj_x(&(players[me->self]));
+					y = obj_y(&(players[me->self]));
+					tolerance = (int)((float)players[me->self].health * me->tolerance);
+
+					if(game_location_dangerous(x, y, tolerance)) {
+						int dx, dy;
+						int err;
+
+						err = ai_find_refugee(x, y, tolerance, &dx, &dy);
+
+						if(err < 0) {
+							/* no place to hide */
+							me->have_obj = 0;
+						} else {
+							me->obj.path = ai_find_path(x, y, dx, dy, 0);
+						}
+					} else {
+						/* bomb's effect does not exceed our tolerance -> stay */
+						me->have_obj = 0;
+					}
+				}
+
 				break;
+
 			}
 		}
 	}
