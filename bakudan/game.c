@@ -10,6 +10,7 @@
 #include "engine.h"
 #include "anim.h"
 #include "ai.h"
+#include "list.h"
 
 player *players = NULL;
 player *cpu = NULL;
@@ -18,6 +19,7 @@ object *objects[WIDTH][HEIGHT];
 static int alive_players;
 static anim_inst *anims;
 static int winner;
+static list *bombs = NULL;
 
 static const char *_item_names[] = {
 	"BAG",
@@ -420,6 +422,7 @@ void game_player_action(const int p)
 			((bomb*)o)->owner = p;
 
 			objects[px][py] = o;
+			assert(list_append(&bombs, o) == 0);
 		}
 
 		players[p].bombs--;
@@ -700,6 +703,7 @@ void game_logic(void)
 
 					free(o);
 					objects[x][y] = NULL;
+					assert(list_remove(&bombs, o) == 0);
 				}
 				break;
 
@@ -867,4 +871,41 @@ int game_ask_universe2(const int l, const int u)
 int game_get_winner(void)
 {
 	return(winner);
+}
+
+int game_location_dangerous(const int x, const int y, const int tolerance)
+{
+	int dmg;
+	int i;
+
+	/* calculate the sum of all damage that will affect location (x, y) */
+
+	dmg = 0;
+
+	for(i = 1; i < WIDTH; i++) {
+		object *o;
+
+		o = objects[i][y];
+
+		if(o && o->type == OBJECT_TYPE_BOMB) {
+			dmg += bomb_strength_at((bomb*)o, x, y);
+		}
+	}
+
+	for(i = 1; i < HEIGHT; i++) {
+		object *o;
+
+		if(i == x) {
+			/* has already been checked in the previous loop */
+			continue;
+		}
+
+		o = objects[x][i];
+
+		if(o && o->type == OBJECT_TYPE_BOMB) {
+			dmg += bomb_strength_at((bomb*)o, x, y);
+		}
+	}
+
+	return(dmg > tolerance);
 }

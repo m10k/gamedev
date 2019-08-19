@@ -162,5 +162,6 @@ int game_player_can_plant(const int);
 void game_player_action(const int);
 void game_cleanup(void);
 anim_inst* game_get_anims(void);
+int game_location_dangerous(const int, const int, const int);
 
 #endif /* GAME_H */
