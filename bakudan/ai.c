@@ -158,8 +158,8 @@ int ai_find_refugee(const int x, const int y, const int tolerance, int *dx, int 
 					if(!o || (o->passable &&							\
 							  o->type != OBJECT_TYPE_BOMB)) {			\
 						if(!game_location_dangerous((_a), (_b), tolerance)) { \
-							*dx = o->x;									\
-							*dy = o->y;									\
+							*dx = (_a);									\
+							*dy = (_b);									\
 							return(0);									\
 						}												\
 					} \
