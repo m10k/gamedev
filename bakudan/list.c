@@ -48,6 +48,23 @@ int list_remove(list **l, void *data)
 	return(ret_val);
 }
 
+void* list_pop(list **l)
+{
+	list *item;
+	void *ret_val;
+
+	item = *l;
+	ret_val = NULL;
+
+	if(item) {
+		ret_val = item->data;
+		*l = item->next;
+		free(item);
+	}
+
+	return(ret_val);
+}
+
 void list_free(list **l)
 {
 	while(*l) {

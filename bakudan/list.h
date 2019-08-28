@@ -22,5 +22,6 @@ struct _list {
 int list_append(list**, void*);
 int list_remove(list**, void*);
 void list_free(list**);
+void* list_pop(list**);
 
 #endif /* LIST_H */
