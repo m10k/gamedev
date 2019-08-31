@@ -64,7 +64,8 @@ typedef enum {
 	OBJECT_TYPE_PILLAR,
 	OBJECT_TYPE_BOULDER,
 	OBJECT_TYPE_ITEM,
-	OBJECT_TYPE_BOMB
+	OBJECT_TYPE_BOMB,
+	OBJECT_TYPE_PLAYER
 } object_type;
 
 typedef struct {
@@ -155,6 +156,7 @@ void game_logic(void);
 int  game_ask_universe(const int);
 int  game_ask_universe2(const int, const int);
 
+int game_player_location(const int, int*, int*);
 int game_player_moving(const int);
 void game_player_move_abs(const int, const int, const int);
 void game_player_move(const int, const int, const int);

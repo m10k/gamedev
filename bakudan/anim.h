@@ -5,6 +5,7 @@
 
 typedef enum {
 	ANIM_EXPLOSION,
+	ANIM_ABOMB,
 	ANIM_NUM
 } anim_type;
 
@@ -26,6 +27,7 @@ struct _anim_inst {
 	anim *base;
 	int frame;
 	int fpf;
+	int cfpf;
 	int x;
 	int y;
 	anim_inst *next;

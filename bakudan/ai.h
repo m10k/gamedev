@@ -40,5 +40,6 @@ void ai_tick(void);
 int ai_path_length(ai_path*);
 int ai_find_refugee(const int, const int, const int, int*, int*);
 ai_path* ai_find_path(const int, const int, const int, const int, const int);
+void ai_path_free(ai_path**);
 
 #endif /* AI_H */
