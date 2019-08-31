@@ -615,9 +615,9 @@ void _ai_think(ai *me)
 				object_type ot;
 				int ox, oy;
 
-				printf("%p [(%02d, %02d), %d]\n",
-					   *o, (*o)->x,
-					   (*o)->y, (*o)->type);
+			    DBG("%p [(%02d, %02d), %d]\n",
+					*o, (*o)->x,
+					(*o)->y, (*o)->type);
 
 				ox = (*o)->x;
 				oy = (*o)->y;

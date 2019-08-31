@@ -337,12 +337,12 @@ void game_animate(void)
 
 	/* advance animations */
 	for(a = anims; a; a = a->next) {
-		if(a->fpf < 0) {
+		if(a->cfpf < 0) {
 			a->frame++;
-			a->fpf = a->base->fpf;
+			a->cfpf = a->fpf;
 		}
 
-		a->fpf--;
+		a->cfpf--;
 	}
 
 	/* remove animations that are done */
@@ -427,9 +427,23 @@ void game_player_action(const int p)
 		o = make_object(OBJECT_TYPE_BOMB, px, py);
 
 		if(o) {
+			anim_inst *a;
+
 			((bomb*)o)->strength = players[p].bomb_strength;
 			((bomb*)o)->timeout = players[p].bomb_timeout * FPS;
 			((bomb*)o)->owner = p;
+
+			/* add bomb animation */
+			a = anim_get_inst(ANIM_ABOMB, px, py);
+
+			if(a) {
+				/* animation should show for (players[p].bomb_timeout * FPS) frames */
+				a->fpf = (players[p].bomb_timeout * FPS) / (a->base->nframes - 1);
+				printf("Adding animation with %d fpf\n", a->fpf);
+				/* add animation to global list */
+				a->next = anims;
+				anims = a;
+			}
 
 			objects[px][py] = o;
 		}

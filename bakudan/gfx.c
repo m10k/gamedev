@@ -408,7 +408,12 @@ int gfx_draw_game(void)
 
 				case OBJECT_TYPE_BOMB:
 					/* draw bomb */
-					st = SPRITE_BOMB;
+					st = SPRITE_NONE;
+
+					/*
+					 * There is an animation for each bomb, so we
+					 * don't have to draw bombs directly
+					 */
 					break;
 
 				case OBJECT_TYPE_ITEM:

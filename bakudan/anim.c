@@ -3,7 +3,8 @@
 #include "gfx.h"
 
 static const char *_anim_paths[ANIM_NUM] = {
-	"gfx/explosion.png"
+	"gfx/explosion.png",
+	"gfx/abomb.png"
 };
 
 static frame explo_frames[] = {
@@ -40,12 +41,37 @@ static frame explo_frames[] = {
 	}
 };
 
+static frame abomb_frames[] = {
+	{
+		NULL, { 0, 0, 32, 32 }
+	}, {
+		NULL, { 32, 0, 32, 32 }
+	}, {
+		NULL, { 64, 0, 32, 32 }
+	}, {
+		NULL, { 96, 0, 32, 32 }
+	}, {
+		NULL, { 0, 32, 32, 32 }
+	}, {
+		NULL, { 32, 32, 32, 32 }
+	}, {
+		NULL, { 64, 32, 32, 32 }
+	}, {
+		NULL, { 96, 32, 32, 32 }
+	}
+};
+
 static anim _anims[ANIM_NUM] = {
 	{
 		.sprites = NULL,
 		.nframes = 10,
 		.frames = &explo_frames[0],
 		.fpf = 2 /* advance every 2 render frames */
+	}, {
+		.sprites = NULL,
+		.nframes = 8,
+		.frames = &abomb_frames[0],
+		.fpf = 1
 	}
 };
 
@@ -146,6 +172,7 @@ anim_inst* anim_get_inst(anim_type type, const int x, const int y)
 		a->x = x;
 		a->y = y;
 		a->fpf = a->base->fpf;
+		a->cfpf = a->fpf;
 	}
 
 	return(a);
