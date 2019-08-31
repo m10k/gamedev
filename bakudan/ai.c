@@ -5,11 +5,26 @@
 #include "game.h"
 #include "list.h"
 
-extern list *bombs;
 extern player *players;
 extern player *cpu;
 static ai _ai[4];
 int num_ais;
+
+#ifdef DEBUG_AI
+#define DBG printf
+#else /* DEBUG_AI */
+#define DBG(...)
+#endif /* DEBUG_AI */
+
+static const char *_object_names[] = {
+	"OBJECT_TYPE_WALL",
+	"OBJECT_TYPE_PILLAR",
+	"OBJECT_TYPE_BOULDER",
+	"OBJECT_TYPE_ITEM",
+	"OBJECT_TYPE_BOMB",
+	"OBJECT_TYPE_PLAYER",
+	"INVALID OBJECT"
+};
 
 struct pq {
 	int x;
@@ -40,6 +55,9 @@ struct pq {
 
 #define MIN(a,b) ((a) < (b) ? (a) : (b))
 #define MAX(a,b) ((a) > (b) ? (a) : (b))
+
+static void _debug_path(ai_path*);
+static struct pq* _safe_location(const int, const int, const int);
 
 object* ai_find_closest(const object_type type, const int x, const int y)
 {
@@ -158,8 +176,8 @@ int ai_find_refugee(const int x, const int y, const int tolerance, int *dx, int 
 					if(!o || (o->passable &&							\
 							  o->type != OBJECT_TYPE_BOMB)) {			\
 						if(!game_location_dangerous((_a), (_b), tolerance)) { \
-							*dx = o->x;									\
-							*dy = o->y;									\
+							*dx = (_a);									\
+							*dy = (_b);									\
 							return(0);									\
 						}												\
 					} \
@@ -265,6 +283,12 @@ ai_path* ai_find_path(const int sx, const int sy,
 	struct pq *cq;
 	int x, y;
 
+	if(sx < 0 || sy < 0 || dx < 0 || dy < 0 ||
+	   sx >= WIDTH || sy >= HEIGHT ||
+	   dx >= WIDTH || dy >= HEIGHT) {
+		return(NULL);
+	}
+
 	for(x = 0; x < WIDTH; x++) {
 		for(y = 0; y < HEIGHT; y++) {
 			state[x][y].x = -1;
@@ -291,16 +315,20 @@ ai_path* ai_find_path(const int sx, const int sy,
 		cy = cq->y;
 		cd = cq->d;
 
-#define CHECK_NEIGHBOR(_x, _y) do {								\
-			if(!objects[_x][_y] || objects[_x][_y]->passable || \
-			   (opts && ((_x) == dx && (_y) == dy))) {			\
-				if(state[_x][_y].d == -1) {						\
-					state[_x][_y].x = cx;						\
-					state[_x][_y].y = cy;						\
-					state[_x][_y].d = cd + 1;					\
-					pq_insert(&q, _x, _y, cd + 1);				\
-				}												\
-			}													\
+		if(cx == dx && cy == dy) {
+			continue;
+		}
+
+#define CHECK_NEIGHBOR(_x, _y) do {									\
+			if(!objects[_x][_y] || objects[_x][_y]->passable ||		\
+			   (opts && ((_x) == dx && (_y) == dy))) {				\
+				if(state[_x][_y].d == -1) {							\
+					state[_x][_y].x = cx;							\
+					state[_x][_y].y = cy;							\
+					state[_x][_y].d = cd + 1;						\
+					pq_insert(&q, _x, _y, cd + 1);					\
+				}													\
+			}														\
 		} while(0)
 
 		CHECK_NEIGHBOR(cq->x, cq->y - 1);
@@ -344,7 +372,7 @@ ai_path* ai_find_path(const int sx, const int sy,
 
 			x = tx;
 			y = ty;
-		} while(x != sx && y != sy);
+		} while(!(x == sx && y == sy));
 
 #if 0
 		while(path) {
@@ -374,71 +402,6 @@ ai_path* ai_find_path(const int sx, const int sy,
 	return(ret_val);
 }
 
-static void _ai_find_objective(ai *me)
-{
-	object *o;
-	int sx, sy;
-	int p;
-
-	sx = obj_x(&(players[me->self]));
-	sy = obj_y(&(players[me->self]));
-
-	/* path to enemy? */
-	for(p = 0; p < game_num_players(); p++) {
-		ai_path *path;
-		int px, py;
-
-		if(p == me->self) {
-			continue;
-		}
-
-		px = obj_x(&(players[p]));
-		py = obj_y(&(players[p]));
-
-		path = ai_find_path(sx, sy, px, py, 1);
-
-		if(!path) {
-			continue;
-		}
-
-		/* there is a path */
-
-		me->obj.type = OBJECTIVE_KILL;
-		me->obj.path = path;
-		me->obj.target = p;
-		me->obj.x = px;
-		me->obj.y = py;
-
-		me->have_obj = 1;
-		return;
-	}
-
-	/* no path to any enemy, find a boulder to destroy */
-
-	o = ai_find_closest2(OBJECT_TYPE_BOULDER, sx, sy);
-
-	if(o) {
-		printf("Found a boulder to destroy at (%02d, %02d)\n",
-			   o->x, o->y);
-
-		me->obj.type = OBJECTIVE_BOMB;
-		me->obj.path = ai_find_path(sx, sy, o->x, o->y, 1);
-		me->obj.x = o->x;
-		me->obj.y = o->y;
-
-		if(me->obj.path) {
-			me->have_obj = 1;
-			return;
-		} else {
-			printf("No path to boulder\n");
-		}
-	}
-
-	printf("Nothing to do\n");
-
-	return;
-}
-
 int ai_init(int n, int first)
 {
 	int ret_val;
@@ -463,109 +426,260 @@ int ai_init(int n, int first)
 
 #define PLAYER_MOVING(pid) (players[pid].dx || players[pid].dy)
 
-void _ai_think(ai *me)
+static inline int _num_steps(const int ax, const int ay, const int bx, const int by)
 {
-	if(!me->have_obj) {
-		_ai_find_objective(me);
+	return((ax < bx ? bx - ax : ax - bx) +
+		(ay < by ? by - ay : ay - by));
+}
+
+static void _debug_path(ai_path *path)
+{
+	int n;
+
+	for(n = 0; path; n++, path = path->next) {
+		printf("%d: (%02d, %02d)\n", n, path->x, path->y);
 	}
 
-	if(me->have_obj) {
-		ai_path *path;
-		int x, y;
+	return;
+}
 
-		/* make sure objective is still valid */
+struct pq* _safe_locations(const int px, const int py, const int risk)
+{
+	extern object *objects[WIDTH][HEIGHT];
+	struct pq *ret_val;
+	int x, y;
 
-		switch(me->obj.type) {
-		case OBJECTIVE_KILL:
-			x = obj_x(&(players[me->obj.target]));
-			y = obj_y(&(players[me->obj.target]));
+	ret_val = NULL;
 
-			if(x != me->obj.x || y != me->obj.y) {
-				while(me->obj.path) {
-					path = me->obj.path;
-					me->obj.path = path->next;
-					free(path);
-				}
+	for(x = 1; x < WIDTH - 1; x++) {
+		for(y = 1; y < HEIGHT - 1; y++) {
+			object *o;
 
-				me->obj.path = ai_find_path(obj_x(&(players[me->self])),
-											obj_y(&(players[me->self])),
-											x, y, 1);
+			o = objects[x][y];
 
-				if(!me->obj.path) {
-					me->have_obj = 0;
-					return;
-				}
+			if(o && !o->passable) {
+				continue;
 			}
 
-			break;
+			if(!game_location_dangerous(x, y, risk)) {
+				pq_insert(&ret_val, x, y, _num_steps(px, py, x, y));
+			}
+		}
+	}
 
-		case OBJECTIVE_BOMB:
+	return(ret_val);
+}
 
-		case OBJECTIVE_ITEM:
+list* _targets_within(const int self, const int x, const int y, const int steps)
+{
+	extern object *objects[WIDTH][HEIGHT];
+	int lx, ly, ux, uy, tx, ty;
+	list *ret_val;
 
-		case OBJECTIVE_HIDE:
-			break;
+	ret_val = NULL;
+
+	/*
+	 * The list that is returned contains pointers to the object table
+	 * or player array. This has the advantage that we don't have to deal
+	 * with objects that have been removed from the object table between
+	 * the invocation of this function and the time the list is checked.
+	 * Also, if an object is removed from the object table but another
+	 * object is inserted in the same location, the list will still
+	 * correctly refer to a valid object (since the distance is still the
+	 * same). [This may happen in some rare cases, like a player dying
+	 * and dropping a life while collecting an item, causing the item
+	 * to be replaced with a life.]
+	 */
+
+	lx = MAX(x - steps, 1);
+	ly = MAX(y - steps, 1);
+	ux = MIN(x + steps, WIDTH - 1);
+	uy = MIN(y + steps, WIDTH - 1);
+
+	for(tx = lx; tx < ux; tx++) {
+		for(ty = ly; ty < uy; ty++) {
+			object *o;
+
+			if(_num_steps(x, y, tx, ty) > steps) {
+				continue;
+			}
+
+			o = objects[tx][ty];
+
+			if(o && (o->type == OBJECT_TYPE_BOULDER ||
+					 o->type == OBJECT_TYPE_ITEM)) {
+				/*
+				 * add a pointer to the pointer to the object
+				 * instead of a pointer to the object, so we
+				 * can forget about mutexes and synchronization
+				 */
+				DBG("list_append(%p, %p [&(objects[%d][%d])])\n", &ret_val, &(objects[tx][ty]), tx, ty);
+				list_append(&ret_val, &(objects[tx][ty]));
+			}
+		}
+	}
+
+	for(tx = 0; tx < game_num_players(); tx++) {
+		if(tx == self) {
+			/* don't include oneself in the list of targets */
+			continue;
 		}
 
-		path = me->obj.path;
+		lx = obj_x(&(players[tx]));
+		ly = obj_x(&(players[tx]));
 
-		if(path) {
-			if(!game_player_moving(me->self)) {
+		if(_num_steps(x, y, lx, ly) < steps) {
+			list_append(&ret_val, &(players[tx]));
+		}
+	}
+
+	return(ret_val);
+}
+
+void _ai_think(ai *me)
+{
+	int d;
+	list *targets;
+	int x, y;
+	int risk;
+
+	if(game_player_moving(me->self)) {
+		/* don't waste CPU cycles while we can't do anything anyways */
+		return;
+	}
+
+	game_player_location(me->self, &x, &y);
+	risk = (int)((float)players[me->self].health * me->tolerance);
+
+	/* first of all, make sure we're not in danger */
+
+	if(game_location_dangerous(x, y, risk)) {
+		struct pq *locs;
+		int dx, dy;
+
+		printf("Need to flee from (%02d, %02d)\n", x, y);
+
+		locs = _safe_locations(x, y, risk);
+
+		while(locs) {
+			ai_path *path;
+
+			printf("Found safe location (%02d, %02d)\n", locs->x, locs->y);
+
+			path = ai_find_path(x, y, locs->x, locs->y, 0);
+
+			if(path) {
+				printf("Found a path to (%02d, %02d) via (%02d, %02d)\n",
+					   locs->x, locs->y, path->x, path->y);
+				_debug_path(path);
+
 				game_player_move_abs(me->self, path->x, path->y);
+				ai_path_free(&path);
+				pq_free(&locs);
 
-				me->obj.path = path->next;
-				free(path);
+				return;
+			} else {
+				struct pq *free_me;
+
+				free_me = locs;
+				locs = locs->next;
+				free(free_me);
 			}
-		} else {
-			switch(me->obj.type) {
-			case OBJECTIVE_ITEM:
-				/* nothing to do */
-				me->have_obj = 0;
-				break;
+		}
 
-			case OBJECTIVE_KILL:
-			case OBJECTIVE_BOMB:
-				/* plant bomb */
+		/*
+		 * Couldn't find a place to flee to - continue as usual
+		 * since there's nothing we can do anyways
+		 */
+	}
 
-				if(game_player_can_plant(me->self)) {
-					game_player_action(me->self);
-					me->obj.type = OBJECTIVE_HIDE;
-				} else {
-					break;
-				}
+	for(d = 1; d < MAX(WIDTH, HEIGHT); d++) {
+		object **o;
+		int done;
 
-			case OBJECTIVE_HIDE:
-				/* find safe place */
+		done = 0;
+		targets = _targets_within(me->self, x, y, d);
 
-				if(!me->obj.path) {
-					int tolerance;
+		if(!targets) {
+			/* no targets within `d' steps */
+			DBG("No targets within %d steps\n", d);
+			continue;
+		}
 
-					x = obj_x(&(players[me->self]));
-					y = obj_y(&(players[me->self]));
-					tolerance = (int)((float)players[me->self].health * me->tolerance);
+		DBG("Have targets within %d steps\n", d);
 
-					if(game_location_dangerous(x, y, tolerance)) {
-						int dx, dy;
-						int err;
+		while((o = (object**)list_pop(&targets)) && !done) {
+			ai_path *path;
 
-						err = ai_find_refugee(x, y, tolerance, &dx, &dy);
+			if(*o) {
+				object_type ot;
+				int ox, oy;
 
-						if(err < 0) {
-							/* no place to hide */
-							me->have_obj = 0;
+				printf("%p [(%02d, %02d), %d]\n",
+					   *o, (*o)->x,
+					   (*o)->y, (*o)->type);
+
+				ox = (*o)->x;
+				oy = (*o)->y;
+				ot = (*o)->type;
+
+				path = ai_find_path(x, y, ox, oy,
+									ot == OBJECT_TYPE_BOULDER ? 1 : 0);
+
+				if(path) {
+					/* if we have a path, walk it */
+
+					if(!game_location_dangerous(path->x, path->y, risk)) {
+						DBG("Next step in path: (%02d,%02d)\n", path->x, path->y);
+
+						if(path->x == x && path->y == y) {
+							/* this happens with boulders */
+							game_player_action(me->self);
 						} else {
-							me->obj.path = ai_find_path(x, y, dx, dy, 0);
+							game_player_move_abs(me->self, path->x, path->y);
 						}
+
+						done = 1;
+					}
+
+					ai_path_free(&path);
+				} else {
+					/*
+					 * If we don't have a path it may be because there is none, or
+					 * because we have already arrived (this is the case with boulders,
+					 * where the last step in the path is not the location of the target)
+					 */
+
+					DBG("Target at (%02d,%02d) is a %s\n",
+						ox, oy,	_object_names[ot]);
+
+					if(_num_steps(x, y, ox, oy) <= 1) {
+						/* place bomb */
+						DBG("Close enough, place bomb\n");
+						game_player_action(me->self);
+						done = 1;
 					} else {
-						/* bomb's effect does not exceed our tolerance -> stay */
-						me->have_obj = 0;
+						/* there really is no path */
+						DBG("Found a target, but no path to it\n");
 					}
 				}
-
-				break;
-
 			}
 		}
+
+		while(list_pop(&targets));
+	}
+
+	return;
+}
+
+void ai_path_free(ai_path **path)
+{
+	while(*path) {
+		ai_path *free_me;
+
+		free_me = *path;
+		*path = free_me->next;
+		free(free_me);
 	}
 
 	return;
@@ -573,13 +687,7 @@ void _ai_think(ai *me)
 
 void ai_tick(void)
 {
-	static char tick = 0;
 	int i;
-
-	if(++tick & 0x80) {
-		tick = 0;
-		printf("%s()\n", __func__);
-	}
 
 	for(i = 0; i < num_ais; i++) {
 		if(!cpu[i].alive) {

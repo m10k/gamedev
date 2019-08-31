@@ -6,6 +6,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <time.h>
+#include <pthread.h>
 #include "game.h"
 #include "engine.h"
 #include "anim.h"
@@ -19,7 +20,6 @@ object *objects[WIDTH][HEIGHT];
 static int alive_players;
 static anim_inst *anims;
 static int winner;
-static list *bombs = NULL;
 
 static const char *_item_names[] = {
 	"BAG",
@@ -236,6 +236,7 @@ int game_init(int humans, int cpus)
 			players[i].type = PLAYER_CPU;
 		}
 
+		((object*)&(players[i]))->type = OBJECT_TYPE_PLAYER;
 		players[i].num = i;
 		players[i].dx = 0;
 		players[i].dy = 0;
@@ -285,11 +286,15 @@ gtfo:
 
 object* game_object_at(const int x, const int y)
 {
-	if(x < 0 || y < 0 || x >= WIDTH || y >= HEIGHT) {
-		return(NULL);
+	object *ret_val;
+
+	ret_val = NULL;
+
+	if(x >= 0 && y >= 0 && x < WIDTH && y < HEIGHT) {
+		ret_val = objects[x][y];
 	}
 
-	return(objects[x][y]);
+	return(ret_val);
 }
 
 player* game_player_num(const int n)
@@ -386,6 +391,11 @@ void game_player_move(const int p, const int dx, const int dy)
 		return;
 	}
 
+	/* only one direction may be set */
+	if(dx && dy) {
+		return;
+	}
+
 	tx = PLX(p) + dx;
 	ty = PLY(p) + dy;
 
@@ -422,7 +432,6 @@ void game_player_action(const int p)
 			((bomb*)o)->owner = p;
 
 			objects[px][py] = o;
-			assert(list_append(&bombs, o) == 0);
 		}
 
 		players[p].bombs--;
@@ -703,7 +712,6 @@ void game_logic(void)
 
 					free(o);
 					objects[x][y] = NULL;
-					assert(list_remove(&bombs, o) == 0);
 				}
 				break;
 
@@ -908,4 +916,20 @@ int game_location_dangerous(const int x, const int y, const int tolerance)
 	}
 
 	return(dmg > tolerance);
+}
+
+int game_player_location(const int p, int *x, int *y)
+{
+	int ret_val;
+
+	ret_val = -EINVAL;
+
+	if(p >= 0 && p < nplayers) {
+		*x = obj_x(&(players[p]));
+		*y = obj_y(&(players[p]));
+
+		ret_val = 0;
+	}
+
+	return(ret_val);
 }
