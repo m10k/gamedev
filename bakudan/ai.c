@@ -5,10 +5,10 @@
 #include "game.h"
 #include "list.h"
 
-extern player *players;
-extern player *cpu;
+extern player *players[MAX_PLAYERS];
 static ai _ai[4];
-int num_ais;
+static int num_humans;
+static int num_ais;
 
 #ifdef DEBUG_AI
 #define DBG printf
@@ -409,8 +409,9 @@ int ai_init(int n, int first)
 
 	ret_val = -EINVAL;
 
-	if(n < 4) {
+	if(n < 4 && n >= 0) {
 		num_ais = n;
+		num_humans = first;
 
 		for(i = 0; i < n; i++) {
 			_ai[i].self = first + i;
@@ -424,7 +425,7 @@ int ai_init(int n, int first)
 	return(ret_val);
 }
 
-#define PLAYER_MOVING(pid) (players[pid].dx || players[pid].dy)
+#define PLAYER_MOVING(pid) (players[pid]->dx || players[pid]->dy)
 
 static inline int _num_steps(const int ax, const int ay, const int bx, const int by)
 {
@@ -513,7 +514,6 @@ list* _targets_within(const int self, const int x, const int y, const int steps)
 				 * instead of a pointer to the object, so we
 				 * can forget about mutexes and synchronization
 				 */
-				DBG("list_append(%p, %p [&(objects[%d][%d])])\n", &ret_val, &(objects[tx][ty]), tx, ty);
 				list_append(&ret_val, &(objects[tx][ty]));
 			}
 		}
@@ -525,8 +525,8 @@ list* _targets_within(const int self, const int x, const int y, const int steps)
 			continue;
 		}
 
-		lx = obj_x(&(players[tx]));
-		ly = obj_x(&(players[tx]));
+		lx = obj_x(players[tx]);
+		ly = obj_x(players[tx]);
 
 		if(_num_steps(x, y, lx, ly) < steps) {
 			list_append(&ret_val, &(players[tx]));
@@ -549,7 +549,7 @@ void _ai_think(ai *me)
 	}
 
 	game_player_location(me->self, &x, &y);
-	risk = (int)((float)players[me->self].health * me->tolerance);
+	risk = (int)((float)players[me->self]->health * me->tolerance);
 
 	/* first of all, make sure we're not in danger */
 
@@ -557,20 +557,20 @@ void _ai_think(ai *me)
 		struct pq *locs;
 		int dx, dy;
 
-		printf("Need to flee from (%02d, %02d)\n", x, y);
+		DBG("Need to flee from (%02d, %02d)\n", x, y);
 
 		locs = _safe_locations(x, y, risk);
 
 		while(locs) {
 			ai_path *path;
 
-			printf("Found safe location (%02d, %02d)\n", locs->x, locs->y);
+			DBG("Found safe location (%02d, %02d)\n", locs->x, locs->y);
 
 			path = ai_find_path(x, y, locs->x, locs->y, 0);
 
 			if(path) {
-				printf("Found a path to (%02d, %02d) via (%02d, %02d)\n",
-					   locs->x, locs->y, path->x, path->y);
+				DBG("Found a path to (%02d, %02d) via (%02d, %02d)\n",
+					locs->x, locs->y, path->x, path->y);
 				_debug_path(path);
 
 				game_player_move_abs(me->self, path->x, path->y);
@@ -614,10 +614,6 @@ void _ai_think(ai *me)
 			if(*o) {
 				object_type ot;
 				int ox, oy;
-
-			    DBG("%p [(%02d, %02d), %d]\n",
-					*o, (*o)->x,
-					(*o)->y, (*o)->type);
 
 				ox = (*o)->x;
 				oy = (*o)->y;
@@ -690,7 +686,7 @@ void ai_tick(void)
 	int i;
 
 	for(i = 0; i < num_ais; i++) {
-		if(!cpu[i].alive) {
+		if(!players[num_humans + i]->alive) {
 			continue;
 		}
 

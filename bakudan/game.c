@@ -13,8 +13,7 @@
 #include "ai.h"
 #include "list.h"
 
-player *players = NULL;
-player *cpu = NULL;
+player *players[MAX_PLAYERS];
 static int nplayers = 0;
 object *objects[WIDTH][HEIGHT];
 static int alive_players;
@@ -38,12 +37,12 @@ static const char *_item_names[] = {
 										   (x >= WIDTH - 3) && (y <= 2)))
 #define IS_BOULDER(x,y) (!IS_WALL(x,y) && !IS_PILLAR(x,y) && !IS_SPAWN(x,y))
 
-#define PLX(n) ((object*)(&(players[n])))->x
-#define PLY(n) ((object*)(&(players[n])))->y
+#define PLX(n) ((object*)players[n])->x
+#define PLY(n) ((object*)players[n])->y
 
 #define SETPSPAWN(n,x,y) do {	  \
-		players[n].spawn_x = (x); \
-		players[n].spawn_y = (y); \
+		players[n]->spawn_x = (x); \
+		players[n]->spawn_y = (y); \
 		SETPPOS(n,x,y);			  \
 	} while(0)
 
@@ -153,7 +152,7 @@ void drop_life(const int x, const int y)
 {
 	item *i;
 
-	i = (item*)make_object(OBJECT_TYPE_ITEM, PLX(x), PLY(x));
+	i = (item*)make_object(OBJECT_TYPE_ITEM, x, x);
 
 	if(i) {
 		i->type = ITEM_TYPE_LIFE;
@@ -168,9 +167,11 @@ void game_cleanup(void)
 {
 	int x, y;
 
-	if(players) {
-		free(players);
-		players = NULL;
+	for(x = 0; x < MAX_PLAYERS; x++) {
+		if(players[x]) {
+			free(players[x]);
+			players[x] = NULL;
+		}
 	}
 
 	for(x = 0; x < WIDTH; x++) {
@@ -194,19 +195,24 @@ int game_init(int humans, int cpus)
 
 	ret_val = 0;
 	n = humans + cpus;
-	players = malloc(sizeof(*players) * n);
+
+	memset(&players, 0, sizeof(players));
 	anims = NULL;
 	winner = -1;
 
-	if(!players) {
-		ret_val = -ENOMEM;
-		goto gtfo;
+	for(i = 0; i < n; i++) {
+		players[i] = malloc(sizeof(*players[i]));
+
+		if(!players[i]) {
+			ret_val = -ENOMEM;
+			goto gtfo;
+		}
+
+		memset(players[i], 0, sizeof(*players[i]));
 	}
 
-	memset(players, 0, sizeof(*players) * n);
 	nplayers = n;
 	alive_players = n;
-	cpu = players + humans;
 
 	if(cpus > 0) {
 		ai_init(cpus, humans);
@@ -231,23 +237,23 @@ int game_init(int humans, int cpus)
 
 	for(i = 0; i < n; i++) {
 		if(i < humans) {
-			players[i].type = PLAYER_HUMAN;
+			players[i]->type = PLAYER_HUMAN;
 		} else {
-			players[i].type = PLAYER_CPU;
+			players[i]->type = PLAYER_CPU;
 		}
 
-		((object*)&(players[i]))->type = OBJECT_TYPE_PLAYER;
-		players[i].num = i;
-		players[i].dx = 0;
-		players[i].dy = 0;
-		players[i].alive = 1;
+		((object*)players[i])->type = OBJECT_TYPE_PLAYER;
+		players[i]->num = i;
+		players[i]->dx = 0;
+		players[i]->dy = 0;
+		players[i]->alive = 1;
 
-		players[i].bomb_timeout = PLAYER_DEFAULT_TIMEOUT;
-		players[i].bomb_strength = PLAYER_DEFAULT_STRENGTH;
-		players[i].health = PLAYER_DEFAULT_HEALTH;
-		players[i].lifes = PLAYER_DEFAULT_LIFES;
-		players[i].probability = PLAYER_DEFAULT_PROBABILITY;
-		players[i].bombs = PLAYER_DEFAULT_BOMBS;
+		players[i]->bomb_timeout = PLAYER_DEFAULT_TIMEOUT;
+		players[i]->bomb_strength = PLAYER_DEFAULT_STRENGTH;
+		players[i]->health = PLAYER_DEFAULT_HEALTH;
+		players[i]->lifes = PLAYER_DEFAULT_LIFES;
+		players[i]->probability = PLAYER_DEFAULT_PROBABILITY;
+		players[i]->bombs = PLAYER_DEFAULT_BOMBS;
 	}
 
 	memset(&objects, 0, sizeof(objects));
@@ -271,13 +277,11 @@ int game_init(int humans, int cpus)
 
 gtfo:
 	if(ret_val < 0) {
-		if(players) {
-			free(players);
-			players = NULL;
-		}
-
-		if(cpu) {
-			cpu = NULL;
+		for(i = 0; i < MAX_PLAYERS; i++) {
+			if(players[i]) {
+				free(players[i]);
+				players[i] = NULL;
+			}
 		}
 	}
 
@@ -303,7 +307,7 @@ player* game_player_num(const int n)
 		return(NULL);
 	}
 
-	return(players + n);
+	return(players[n]);
 }
 
 int game_num_players(void)
@@ -319,7 +323,7 @@ void game_animate(void)
 
 	/* advance player movements */
 	for(n = 0; n < nplayers; n++) {
-		player *p = players + n;
+		player *p = players[n];
 
 		if(p->dx > 0) {
 			p->dx--;
@@ -364,7 +368,7 @@ void game_animate(void)
 
 int game_player_moving(const int p)
 {
-	return(players[p].dx || players[p].dy);
+	return(players[p]->dx || players[p]->dy);
 }
 
 void game_player_move_abs(const int p, const int x, const int y)
@@ -387,7 +391,7 @@ void game_player_move(const int p, const int dx, const int dy)
 	printf("%s(%d, %d, %d)\n", __func__, p, dx, dy);
 
 	/* player is still moving from previous call */
-	if(players[p].dx || players[p].dy) {
+	if(players[p]->dx || players[p]->dy) {
 		return;
 	}
 
@@ -401,8 +405,8 @@ void game_player_move(const int p, const int dx, const int dy)
 
 	/* check for collision */
 	if(!objects[tx][ty] || objects[tx][ty]->passable) {
-		players[p].dx = -32 * dx;
-		players[p].dy = -32 * dy;
+		players[p]->dx = -32 * dx;
+		players[p]->dy = -32 * dy;
 		SETPPOS(p, tx, ty);
 	}
 
@@ -412,7 +416,7 @@ void game_player_move(const int p, const int dx, const int dy)
 int game_player_can_plant(const int p)
 {
 	return(!game_player_moving(p) &&
-		   players[p].bombs > 0);
+		   players[p]->bombs > 0);
 }
 
 void game_player_action(const int p)
@@ -429,16 +433,16 @@ void game_player_action(const int p)
 		if(o) {
 			anim_inst *a;
 
-			((bomb*)o)->strength = players[p].bomb_strength;
-			((bomb*)o)->timeout = players[p].bomb_timeout * FPS;
+			((bomb*)o)->strength = players[p]->bomb_strength;
+			((bomb*)o)->timeout = players[p]->bomb_timeout * FPS;
 			((bomb*)o)->owner = p;
 
 			/* add bomb animation */
 			a = anim_get_inst(ANIM_ABOMB, px, py);
 
 			if(a) {
-				/* animation should show for (players[p].bomb_timeout * FPS) frames */
-				a->fpf = (players[p].bomb_timeout * FPS) / (a->base->nframes - 1);
+				/* animation should show for (players[p]->bomb_timeout * FPS) frames */
+				a->fpf = (players[p]->bomb_timeout * FPS) / (a->base->nframes - 1);
 				printf("Adding animation with %d fpf\n", a->fpf);
 				/* add animation to global list */
 				a->next = anims;
@@ -448,7 +452,7 @@ void game_player_action(const int p)
 			objects[px][py] = o;
 		}
 
-		players[p].bombs--;
+		players[p]->bombs--;
 	}
 
 	return;
@@ -481,10 +485,10 @@ int bomb_strength_at(bomb *b, const int x, const int y)
 
 void player_damage(const int p, const int dmg, bomb *b)
 {
-	if(players[p].health > 0) {
-		printf("Dealing %d dmg to player %d (newhp: %d)\n", dmg, p, players[p].health - dmg);
-		players[p].health -= dmg;
-		players[p].attacker = b->owner;
+	if(players[p]->health > 0) {
+		printf("Dealing %d dmg to player %d (newhp: %d)\n", dmg, p, players[p]->health - dmg);
+		players[p]->health -= dmg;
+		players[p]->attacker = b->owner;
 	}
 
 	return;
@@ -710,19 +714,19 @@ void game_logic(void)
 					objects[x][y] = NULL;
 
 					/* decide whether to spawn an item */
-					if(game_ask_universe(players[p].probability)) {
+					if(game_ask_universe(players[p]->probability)) {
 						printf("Dropping item at (%d, %d)\n", x, y);
 						drop_item(x, y);
 					}
 
-					players[p].boulders++;
+					players[p]->boulders++;
 				}
 				break;
 
 			case OBJECT_TYPE_BOMB:
 				if(((bomb*)o)->timeout <= 0) {
 					/* allow owner to spawn another bomb */
-					players[((bomb*)o)->owner].bombs++;
+					players[((bomb*)o)->owner]->bombs++;
 
 					free(o);
 					objects[x][y] = NULL;
@@ -736,17 +740,17 @@ void game_logic(void)
 	}
 
 	for(x = 0; x < nplayers; x++) {
-		if(players[x].alive) {
+		if(players[x]->alive) {
 			object *o;
 
-			if(players[x].health <= 0) {
-				printf("P%dがP%dを殺した\n", players[x].attacker, x);
+			if(players[x]->health <= 0) {
+				printf("P%dがP%dを殺した\n", players[x]->attacker, x);
 
-				if(players[x].attacker == x) {
-					players[x].suicides++;
+				if(players[x]->attacker == x) {
+					players[x]->suicides++;
 				} else {
-					players[x].deaths++;
-					players[players[x].attacker].frags++;
+					players[x]->deaths++;
+					players[players[x]->attacker]->frags++;
 				}
 
 				/* drop a life? */
@@ -754,13 +758,13 @@ void game_logic(void)
 					drop_life(PLX(x), PLY(x));
 				}
 
-				if(players[x].lifes > 0) {
-					players[x].lifes--;
-					players[x].health = PLAYER_DEFAULT_HEALTH;
-					PLX(x) = players[x].spawn_x;
-					PLY(x) = players[x].spawn_y;
+				if(players[x]->lifes > 0) {
+					players[x]->lifes--;
+					players[x]->health = PLAYER_DEFAULT_HEALTH;
+					PLX(x) = players[x]->spawn_x;
+					PLY(x) = players[x]->spawn_y;
 				} else {
-					players[x].alive = 0;
+					players[x]->alive = 0;
 					alive_players--;
 				}
 			}
@@ -774,20 +778,20 @@ void game_logic(void)
 				objects[PLX(x)][PLY(x)] = NULL;
 
 				/* add stats from item */
-				printf("\tHP    : %d + %d\n", players[x].health, ((item*)o)->health);
-				players[x].health += ((item*)o)->health;
-				printf("\t弾    : %d + %d\n", players[x].bombs, ((item*)o)->bombs);
-				players[x].bombs += ((item*)o)->bombs;
-				printf("\t可能性: %d + %d\n", players[x].probability, ((item*)o)->probability);
-				players[x].probability += ((item*)o)->probability;
-				printf("\t爆力  : %d + %d\n", players[x].bomb_strength, ((item*)o)->bomb_strength);
-				players[x].bomb_strength += ((item*)o)->bomb_strength;
-				printf("\t爆時  : %d + %d\n", players[x].bomb_timeout, ((item*)o)->bomb_timeout);
-				players[x].bomb_timeout += ((item*)o)->bomb_timeout;
-				printf("\t命    : %d + %d\n", players[x].lifes, ((item*)o)->lifes);
-				players[x].lifes += ((item*)o)->lifes;
+				printf("\tHP    : %d + %d\n", players[x]->health, ((item*)o)->health);
+				players[x]->health += ((item*)o)->health;
+				printf("\t弾    : %d + %d\n", players[x]->bombs, ((item*)o)->bombs);
+				players[x]->bombs += ((item*)o)->bombs;
+				printf("\t可能性: %d + %d\n", players[x]->probability, ((item*)o)->probability);
+				players[x]->probability += ((item*)o)->probability;
+				printf("\t爆力  : %d + %d\n", players[x]->bomb_strength, ((item*)o)->bomb_strength);
+				players[x]->bomb_strength += ((item*)o)->bomb_strength;
+				printf("\t爆時  : %d + %d\n", players[x]->bomb_timeout, ((item*)o)->bomb_timeout);
+				players[x]->bomb_timeout += ((item*)o)->bomb_timeout;
+				printf("\t命    : %d + %d\n", players[x]->lifes, ((item*)o)->lifes);
+				players[x]->lifes += ((item*)o)->lifes;
 
-				players[x].items++;
+				players[x]->items++;
 
 				free(o);
 			}
@@ -798,7 +802,7 @@ void game_logic(void)
 		/* game over */
 
 		for(x = 0; x < nplayers; x++) {
-			if(players[x].alive) {
+			if(players[x]->alive) {
 				winner = x;
 				break;
 			}
@@ -939,8 +943,8 @@ int game_player_location(const int p, int *x, int *y)
 	ret_val = -EINVAL;
 
 	if(p >= 0 && p < nplayers) {
-		*x = obj_x(&(players[p]));
-		*y = obj_y(&(players[p]));
+		*x = obj_x(players[p]);
+		*y = obj_y(players[p]);
 
 		ret_val = 0;
 	}
