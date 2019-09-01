@@ -467,6 +467,11 @@ int gfx_draw_game(void)
 		}
 	}
 
+	/* draw animations */
+	for(a = game_get_anims(); a; a = a->next) {
+		anim_inst_draw(a, _surface);
+	}
+
 	for(x = 0; x < game_num_players(); x++) {
 		player *p;
 		SDL_Rect dpos;
@@ -481,11 +486,6 @@ int gfx_draw_game(void)
 		dpos.y = (obj_y(p) * 32) + p->dy;
 
 		SDL_BlitSurface(_player_sprites[p->num], NULL, _surface, &dpos);
-	}
-
-	/* draw animations */
-	for(a = game_get_anims(); a; a = a->next) {
-		anim_inst_draw(a, _surface);
 	}
 
 	return(ret_val);
